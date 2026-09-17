@@ -2,32 +2,37 @@ default:
     echo "Hi"
 
 build-c source="src/main.ks":
-    kastc compile \
+    ${KASTC:-kastc} compile \
         --target c \
         --output target/compiled/main.c \
         {{source}}
 
-build-native:
+build-native source="target/compiled/main.c":
     ${CC:-gcc} \
+        {{source}} \
+        -o target/compiled/main.exe \
         -I. \
         -pthread \
         -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
         -g -O0 \
-        -o target/compiled/main.exe \
-        target/compiled/main.c \
         -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
 
 build-windows-do source:
     $CC \
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
-        -mwindows \
-        -lm -lgc -lSDL3 -lSDL3_image -lbacktrace \
-        -Wfatal-errors \
-        -g -O0 \
+        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lglew32 -lglu32 -lopengl32 \
+        {{source}} \
         -o target/compiled/main.exe \
-        {{source}}
+        -I. \
+        -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
+        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lglew32 -lglu32 -lopengl32 \
+        -Wfatal-errors \
+        -g -O0
+    # -mwindows \
 
 build-windows source="target/compiled/main.c":
     nix develop .#win --command just build-windows-do {{source}}

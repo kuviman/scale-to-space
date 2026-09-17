@@ -152,7 +152,8 @@ extern "C" {
 
 // Then we have some platforms specific definitions
 #if defined(TINYCSOCKET_USE_WIN32_IMPL)
-#ifdef _WINSOCKAPI_
+// TODO report this as an issue
+#ifndef _WINSOCKAPI_
 #error winsock.h included instead of winsock2.h. Define "_WINSOCKAPI_" or include this header file before windows.h to fix the problem
 #endif
 #ifndef __MINGW32__  // MinGW will generate a warning by it self.

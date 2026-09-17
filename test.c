@@ -1,102 +1,98 @@
-#include <netdb.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdnoreturn.h>
-#include <string.h>
-#include <sys/socket.h>
+/* lines.c ... */
 
-noreturn void panic(const char *s) {
-  fprintf(stderr, "panic: %s\n", s);
-  exit(-1);
-}
-noreturn void panic_errno(const char *s) {
-  fprintf(stderr, "%s\n", s);
-  exit(-1);
-}
+/*
+ * This example creates an SDL window and renderer, and then draws some lines
+ * to it every frame.
+ *
+ * This code is public domain. Feel free to use it for any purpose!
+ */
 
-typedef struct {
-  int sock_fd;
-  FILE *reader;
-  FILE *writer;
-} tcp_Stream;
+#define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
-tcp_Stream tcp_Stream_from_fd(int fd) {
-  FILE *reader = fdopen(fd, "r");
-  if (!reader) {
-    panic_errno("tcp_Stream_from_fd");
+/* We will use this renderer to draw into this window every frame. */
+static SDL_Window *window = NULL;
+static SDL_Renderer *renderer = NULL;
+
+/* This function runs once at startup. */
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+  SDL_SetAppMetadata("Example Renderer Lines", "1.0",
+                     "com.example.renderer-lines");
+
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
+    SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
+    return SDL_APP_FAILURE;
   }
-  FILE *writer = fdopen(fd, "w");
-  if (!writer) {
-    panic_errno("tcp_Stream_from_fd");
-  }
-  return (tcp_Stream){
-      .sock_fd = fd,
-      .reader = reader,
-      .writer = writer,
-  };
-}
 
-const char *Kast_read_until(FILE *f, char c) {
-  char *buf = NULL;
-  size_t buf_size = 0;
-  ssize_t length = getdelim(&buf, &buf_size, c, f);
-  if (length < 0) {
-    panic_errno("Kast_read_until.getdelim");
+  if (!SDL_CreateWindowAndRenderer("examples/renderer/lines", 640, 480,
+                                   SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+    SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
+    return SDL_APP_FAILURE;
   }
-  return buf;
+  SDL_SetRenderLogicalPresentation(renderer, 640, 480,
+                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
+  return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
-const char *tcp_Stream_read_line(tcp_Stream *s) {
-  return Kast_read_until(s->reader, '\n');
+/* This function runs when a new event (mouse input, keypresses, etc) occurs. */
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+  if (event->type == SDL_EVENT_QUIT) {
+    return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
+  }
+  return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
-tcp_Stream tcp_Stream_connect(const char *host, const char *port) {
-  struct addrinfo *ai, *rp;
-  int res = getaddrinfo(host, port, NULL, &ai);
-  if (res) {
-    if (res == EAI_SYSTEM) {
-      panic_errno("tcp_Stream_connect.getaddrinfo");
-    } else {
-      fprintf(stderr, "getaddrinfo failed with %d", res);
-      exit(-1);
-    }
+/* This function runs once per frame, and is the heart of the program. */
+SDL_AppResult SDL_AppIterate(void *appstate) {
+  int i;
+
+  /* Lines (line segments, really) are drawn in terms of points: a set of
+     X and Y coordinates, one set for each end of the line.
+     (0, 0) is the top left of the window, and larger numbers go down
+     and to the right. This isn't how geometry works, but this is pretty
+     standard in 2D graphics. */
+  static const SDL_FPoint line_points[] = {{100, 354}, {220, 230}, {140, 230},
+                                           {320, 100}, {500, 230}, {420, 230},
+                                           {540, 354}, {400, 354}, {100, 354}};
+
+  /* as you can see from this, rendering draws over whatever was drawn before
+   * it. */
+  SDL_SetRenderDrawColor(renderer, 100, 100, 100,
+                         SDL_ALPHA_OPAQUE); /* grey, full alpha */
+  SDL_RenderClear(renderer);                /* start with a blank canvas. */
+
+  /* You can draw lines, one at a time, like these brown ones... */
+  SDL_SetRenderDrawColor(renderer, 127, 49, 32, SDL_ALPHA_OPAQUE);
+  SDL_RenderLine(renderer, 240, 450, 400, 450);
+  SDL_RenderLine(renderer, 240, 356, 400, 356);
+  SDL_RenderLine(renderer, 240, 356, 240, 450);
+  SDL_RenderLine(renderer, 400, 356, 400, 450);
+
+  /* You can also draw a series of connected lines in a single batch... */
+  SDL_SetRenderDrawColor(renderer, 0, 255, 0, SDL_ALPHA_OPAQUE);
+  SDL_RenderLines(renderer, line_points, SDL_arraysize(line_points));
+
+  /* here's a bunch of lines drawn out from a center point in a circle. */
+  /* we randomize the color of each line, so it functions as animation. */
+  for (i = 0; i < 360; i++) {
+    const float size = 30.0f;
+    const float x = 320.0f;
+    const float y = 95.0f - (size / 2.0f);
+    const float r = (float)i * (SDL_PI_F / 180.0f);
+    SDL_SetRenderDrawColor(renderer, SDL_rand(256), SDL_rand(256),
+                           SDL_rand(256), SDL_ALPHA_OPAQUE);
+    SDL_RenderLine(renderer, x, y, x + SDL_cosf(r) * size,
+                   y + SDL_sinf(r) * size);
   }
-  for (rp = ai; rp != NULL; rp = rp->ai_next) {
-    if (rp->ai_socktype != SOCK_STREAM) {
-      continue;
-    }
-    int sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if (sock_fd == -1) {
-      panic_errno("tcp_Stream_connect.socket");
-    }
-    printf("trying to connect\n");
-    int res = connect(sock_fd, rp->ai_addr, rp->ai_addrlen);
-    if (res == 0) {
-      freeaddrinfo(ai);
-      return tcp_Stream_from_fd(sock_fd);
-    };
-    // ignore errno, try next addr
-  }
-  freeaddrinfo(ai);
-  panic("failed to connect");
+
+  SDL_RenderPresent(renderer); /* put it all on the screen! */
+
+  return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
-void tcp_Stream_write(tcp_Stream *s, const char *data) {
-  fprintf(s->writer, "%s", data);
-  if (fflush(s->writer) != 0) {
-    panic_errno("tcp_Stream_write.fflush");
-  }
-}
-
-int main() {
-  tcp_Stream stream = tcp_Stream_connect("localhost", "1234");
-  printf("Connected\n");
-  while (true) {
-    const char *msg = tcp_Stream_read_line(&stream);
-    printf("server said: %s\n", msg);
-    tcp_Stream_write(&stream, "{\"tag\":\"Update\",\"data\":{\"position\":{"
-                              "\"0\":0,\"1\":1,\"2\":2}}}\n");
-  }
-  return 0;
+/* This function runs once at shutdown. */
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+  /* SDL will clean up the window/renderer for us. */
 }

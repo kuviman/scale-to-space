@@ -8,11 +8,13 @@
     kast-selfhost.url = "git+https://github.com/kast-lang/kast?rev=9cbd998cdb9adf1e3b25cf9599f1e26743f80016&submodules=1";
     # kast.url = "git+file:/home/kuviman/projects/kast-lang/kast";
     flake-utils.url = "github:numtide/flake-utils";
+    nix-filter.url = "github:numtide/nix-filter";
   };
 
   outputs = inputs:
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
+        nix-filter = inputs.nix-filter.lib;
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
         pkgs = import inputs.nixpkgs { inherit system; };
         emscripten = pkgs-25-11.emscripten;
@@ -125,23 +127,51 @@
           sdl3.overrideAttrs
             (prev: {
               cmakeFlags = prev.cmakeFlags ++ [
-                (lib.cmakeBool "SDL_STATIC" true)
-                (lib.cmakeBool "SDL_SHARED" false)
+                # (lib.cmakeBool "SDL_STATIC" true)
+                # (lib.cmakeBool "SDL_SHARED" false)
               ];
             });
-      in
-      with pkgs; {
-        packages = {
-          inherit boehmgc-web;
-          inherit sdl3-win;
+        game-c-source = with pkgs; stdenv.mkDerivation {
+          name = "scale-to-space-c-source";
+          src = nix-filter {
+            root = ./.;
+            exclude = [ "flake.nix" ];
+          };
+          nativeBuildInputs = [ kast just ];
+          buildPhase = ''
+            KASTC=kast just build-c
+          '';
+          installPhase = ''
+            mkdir -p $out
+            cp target/compiled/main.c $out/main.c
+          '';
         };
-        devShells.win = with pkgs.pkgsCross.mingwW64; mkShell {
+        game-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation {
+          name = "scale-to-space";
+          src = nix-filter {
+            root = ./.;
+            include = [
+              "net"
+              ".justfile"
+              "assets"
+            ];
+          };
+          buildPhase = ''
+            mkdir -p target/compiled
+            just build-windows-do ${game-c-source}/main.c
+          '';
+          installPhase = ''
+            set -e
+            mkdir -p $out/bin
+            cp target/compiled/main.exe $out/bin/
+            cp -r assets
+          '';
           nativeBuildInputs = [
             libGL
             gcc
             pkgs.just
           ];
-          buildInputs = [
+          propagatedBuildInputs = [
             (glew.overrideAttrs {
               meta.platforms = [ "x86_64-windows" ];
               buildInputs = [ ];
@@ -179,14 +209,23 @@
               propagatedBuildInputs = [ ];
               postPatch = null;
               cmakeFlags = [
-                "-DBUILD_SHARED_LIBS=OFF"
+                # "-DBUILD_SHARED_LIBS=OFF"
                 "-DSDLMIXER_OPUS=OFF"
               ];
             })
             boehmgc
           ];
         };
-        devShells.default =
+      in
+      {
+        packages = {
+          inherit boehmgc-web;
+          inherit sdl3-win;
+          inherit game-c-source;
+          inherit game-win;
+        };
+        devShells.win = pkgs.mkShell game-win;
+        devShells.default = with pkgs;
           mkShell
             {
               packages = [
