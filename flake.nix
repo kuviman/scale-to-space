@@ -126,7 +126,11 @@
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
             (prev: {
+              openglSupport = true;
               cmakeFlags = prev.cmakeFlags ++ [
+                (lib.cmakeBool "WINDOWS" true)
+                (lib.cmakeBool "SDL_OPENGL" true)
+                (lib.cmakeBool "SDL_VIDEO" true)
                 # (lib.cmakeBool "SDL_STATIC" true)
                 # (lib.cmakeBool "SDL_SHARED" false)
               ];
@@ -135,7 +139,12 @@
           name = "scale-to-space-c-source";
           src = nix-filter {
             root = ./.;
-            exclude = [ "flake.nix" ];
+            include = [
+              "deps"
+              "src"
+              "net"
+              ".justfile"
+            ];
           };
           nativeBuildInputs = [ kast just ];
           buildPhase = ''
@@ -224,7 +233,6 @@
           inherit game-c-source;
           inherit game-win;
         };
-        devShells.win = pkgs.mkShell game-win;
         devShells.default = with pkgs;
           mkShell
             {

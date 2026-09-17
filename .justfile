@@ -35,7 +35,7 @@ build-windows-do source:
     # -mwindows \
 
 build-windows source="target/compiled/main.c":
-    nix develop .#win --command just build-windows-do {{source}}
+    nix develop '.?submodules=1#game-win' --command just build-windows-do {{source}}
 
 build-emscripten source="target/compiled/main.c":
     rm -rf target/web
