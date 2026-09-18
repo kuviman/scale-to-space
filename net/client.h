@@ -169,7 +169,9 @@ void *badcop_poll_msg() {
   if (!connected) {
     // let's see if we should reconnect
     time_t timestamp = time(NULL);
-    if (timestamp - disconnected_at >= 5) {
+// #define RECONNECT_AFTER 5
+#define RECONNECT_AFTER 60000
+    if (timestamp - disconnected_at >= RECONNECT_AFTER) {
       printf("Attempting reconnect\n");
       badcop_init(saved_conn_str);
     }

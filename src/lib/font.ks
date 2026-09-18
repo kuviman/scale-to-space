@@ -119,6 +119,18 @@ const Font = newtype {
     .texture :: ugli.Texture,
     .chars :: OrdMap.t[Char, UvRect],
     .program :: ugli.Program,
+    .uniforms :: Uniforms,
+};
+
+const Uniforms = newtype {
+    .u_projection_matrix :: ugli.UniformInfo,
+    .u_view_matrix :: ugli.UniformInfo,
+    .u_model_matrix :: ugli.UniformInfo,
+    .u_texture :: ugli.UniformInfo,
+    .u_color :: ugli.UniformInfo,
+    .u_pos :: ugli.UniformInfo,
+    .u_uv_rect_pos :: ugli.UniformInfo,
+    .u_uv_rect_size :: ugli.UniformInfo,
 };
 
 const single_char = (s :: String) -> Char => (
@@ -167,6 +179,10 @@ impl Font as module = (
             .texture,
             .chars,
             .program,
+            .uniforms = include_ast ugli.calculate_uniforms(
+                `(program),
+                Uniforms,
+            ),
         }
     );
 
@@ -202,11 +218,11 @@ impl Font as module = (
 
         program |> ugli.set_vertex_data_source(ctx.quad.buffer);
 
-        program |> ugli.set_uniform("u_view_matrix", camera.view_matrix, draw_state);
-        program |> ugli.set_uniform("u_projection_matrix", camera.projection_matrix, draw_state);
-        program |> ugli.set_uniform("u_model_matrix", matrix, draw_state);
-        program |> ugli.set_uniform("u_texture", font^.texture, draw_state);
-        program |> ugli.set_uniform("u_color", color, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_view_matrix, camera.view_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_projection_matrix, camera.projection_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_model_matrix, matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_texture, font^.texture, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_color, color, draw_state);
 
         let tile_size = font^.config.tile_size;
         let single_char_size :: Vec2 = { tile_size.0 / tile_size.1, 1 };
@@ -225,11 +241,11 @@ impl Font as module = (
                     + ") is not in font"
                 )
                 | :Some (&uv) => (
-                    program |> ugli.set_uniform("u_uv_rect_pos", uv.pos, draw_state);
-                    program |> ugli.set_uniform("u_uv_rect_size", uv.size, draw_state);
+                    program |> ugli.set_uniform_eff(font^.uniforms.u_uv_rect_pos, uv.pos, draw_state);
+                    program |> ugli.set_uniform_eff(font^.uniforms.u_uv_rect_size, uv.size, draw_state);
                 )
             );
-            program |> ugli.set_uniform("u_pos", pos, draw_state);
+            program |> ugli.set_uniform_eff(font^.uniforms.u_pos, pos, draw_state);
             gl.draw_arrays(gl.TRIANGLE_FAN, 0, 4);
 
             pos.0 += single_char_size.0;

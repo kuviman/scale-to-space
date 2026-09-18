@@ -91,17 +91,44 @@ const AttributeInfo = newtype {
     .index :: UInt32,
 };
 
-const UniformInfo = newtype {
+const ExistingUniformInfo = newtype {
     .raw :: gl.ActiveInfo,
     .location :: gl.UniformLocation,
     .index :: UInt32,
 };
 
+const UniformInfo = Option.t[ExistingUniformInfo];
+
+const calculate_uniforms = (program :: std.Ast, T :: Type) -> std.Ast => @cfg (
+    | target.name == "interpreter" => (
+        match std.reflection.type_info(T) with (
+            | :Tuple { .unnamed, .named } => (
+                use std.collections.SList;
+                for _ in SList.into_iter(unnamed) do (
+                    panic("No unnamed fields for uniforms, thank you");
+                );
+                let mut fields = `();
+                for { name, field_T } in SList.into_iter(named) do (
+                    let name_ident = std.Ast.ident(name);
+                    fields = `(
+                        $fields,
+                        .$name_ident = &$program.uniforms
+                            |> OrdMap.get(name)
+                            |> Option.map(&info => info)
+                    )
+                );
+                `({ $fields })
+            )
+        )
+    )
+    | true => panic("comptime only")
+);
+
 const Program = newtype {
     .ctx :: gl.ContextT,
     .handle :: gl.Program,
     .attributes :: OrdMap.t[String, AttributeInfo],
-    .uniforms :: OrdMap.t[String, UniformInfo],
+    .uniforms :: OrdMap.t[String, ExistingUniformInfo],
 };
 
 impl Program as module = (
@@ -421,6 +448,17 @@ const set_uniform = [T] (
         | :None => return
     );
     (T as Uniform).set(uniform_info^.location, value, state);
+);
+
+const set_uniform_eff = [T] (
+    program :: Program,
+    info :: UniformInfo,
+    value :: T,
+    state :: &mut DrawState,
+) -> () => with_return (
+    let info = info |> Option.unwrap_or_else(() => return);
+    let ctx = program.ctx;
+    (T as Uniform).set(info.location, value, state);
 );
 
 const Vertex = [Self] newtype {
