@@ -185,7 +185,8 @@ void *badcop_poll_msg() {
   }
   if (user.looping && user.start + 4 <= user.end) {
     void *msg;
-    switch (((int *)(user.buf))[user.start]) {
+    ServerMsgTag tag = *((ServerMsgTag *)(user.buf + user.start));
+    switch (tag) {
     case ServerEmote:
       if (msg = has_full_message(sizeof(ServerMsgEmote)))
         return msg;
@@ -206,6 +207,9 @@ void *badcop_poll_msg() {
       if (msg = has_full_message(sizeof(ServerMsgDisconnected)))
         return msg;
       break;
+    default:
+      printf("server sent garbage or i (badcop) am bad at C: tag = %d\n", tag);
+      return NULL;
     }
   } else if (user.looping) {
     // reset buffer
