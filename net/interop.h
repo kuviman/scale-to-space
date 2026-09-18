@@ -37,7 +37,7 @@ typedef struct __attribute__((packed)) {
   float ry;
   float rz;
   float rw;
-  struct {
+  struct __attribute__((packed)) {
     float x;
     float y;
     float z;
