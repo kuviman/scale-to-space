@@ -29,6 +29,8 @@ const init = () => (
 );
 
 const check_error = () => with_return (
+    # TODO
+    if is_emscripten() then return;
     let error = gl.get_error();
     let error_string = if error == (@native "GL_NO_ERROR") then (
         return
