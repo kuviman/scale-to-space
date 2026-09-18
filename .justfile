@@ -39,7 +39,7 @@ build-win:
     nix build '.?submodules=1#game-win'
 
 run-win:
-    nix build '.?submodules=1#game-win' && wine result/bin/ScaleToSpace.exe
+    just build-win && wine result/bin/ScaleToSpace.exe
 
 build-emscripten source="target/compiled/main.c":
     rm -rf target/web

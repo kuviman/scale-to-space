@@ -8,7 +8,8 @@ const Args = newtype {
     .vsync :: Bool,
 };
 
-const default_address = "127.0.0.1:1234";
+const default_address = std.sys.get_env("SERVER_ADDRESS")
+    |> Option.unwrap_or("127.0.0.1:1234");
 
 const parse = () -> Args => with_return (
     let mut result :: Args = {

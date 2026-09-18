@@ -14,6 +14,7 @@
   outputs = inputs:
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
+        SERVER_ADDRESS = "15.204.212.176:5555";
         nix-filter = inputs.nix-filter.lib;
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
         pkgs = import inputs.nixpkgs { inherit system; };
@@ -147,6 +148,7 @@
           };
           nativeBuildInputs = [ kast just ];
           buildPhase = ''
+            export SERVER_ADDRESS="${SERVER_ADDRESS}"
             KASTC=kast just build-c
           '';
           installPhase = ''
@@ -291,7 +293,7 @@
               SDL3_WEB = "${sdl3-web}";
               SDL3_IMAGE_WEB = "${sdl3-image-web}";
               SDL3_MIXER_WEB = "${sdl3-mixer-web}";
-              SERVER_ADDRESS = "d2jam4.badcop.games:5555";
+              inherit SERVER_ADDRESS;
             };
       });
 }

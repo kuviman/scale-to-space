@@ -169,8 +169,8 @@ void *badcop_poll_msg() {
   if (!connected) {
     // let's see if we should reconnect
     time_t timestamp = time(NULL);
-// #define RECONNECT_AFTER 5
-#define RECONNECT_AFTER 60000
+#define RECONNECT_AFTER 5
+    // #define RECONNECT_AFTER 60000
     if (timestamp - disconnected_at >= RECONNECT_AFTER) {
       printf("Attempting reconnect\n");
       badcop_init(saved_conn_str);
@@ -228,6 +228,7 @@ void *badcop_poll_msg() {
  * Call to open a socket to the server.
  */
 int badcop_init(char *conn_str) {
+  printf("connecting to %s\n", conn_str);
   disconnected_at = time(NULL);
   if (!*saved_conn_str) {
     strncpy(saved_conn_str, conn_str, 255);

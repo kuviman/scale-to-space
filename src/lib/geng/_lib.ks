@@ -3,6 +3,7 @@ use (import "../la/_lib.ks").*;
 const gl = import "../gl/_lib.ks";
 const ugli = import "../ugli/_lib.ks";
 const SDL = import "../sdl3/_lib.ks";
+const cli = import "../../cli.ks";
 
 module:
 
@@ -56,7 +57,7 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
 
     let gl_context = SDL.GL.CreateContext(window);
     SDL.GL.MakeCurrent(window, gl_context);
-    let vsync = (import "../../cli.ks").parse().vsync;
+    let vsync = cli.parse().vsync;
     SDL.GL.SetSwapInterval(if vsync then 1 else 0);
     log("Created GL context");
 
@@ -116,7 +117,7 @@ const draw_quad = (
     .texture :: ugli.Texture,
 ) => (
     panic("TODO DRAW QUAD");
-    (#
+(#
     let ctx = (@current Context);
     let camera = (@current CameraCtx);
     let program = ctx.quad.program;
@@ -132,8 +133,7 @@ const draw_quad = (
     program |> ugli.set_uniform("u_texture", texture, draw_state);
     program |> ugli.set_vertex_data_source(ctx.quad.buffer);
     gl.draw_arrays(gl.TRIANGLE_FAN, 0, 4);
-    #)
-);
+    #) );
 
 const load_texture = (path :: String, filter :: ugli.Filter) -> ugli.Texture => (
     ugli.Texture.load(path, filter)
