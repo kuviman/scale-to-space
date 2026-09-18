@@ -3,6 +3,7 @@ default:
 
 build-c source="src/main.ks":
     ${KASTC:-kastc} compile \
+        --c-boxed-structs false \
         --target c \
         --output target/compiled/main.c \
         {{source}}
@@ -80,6 +81,9 @@ run:
     LSAN_OPTIONS='suppresions=suppr.txt' \
         ./target/compiled/main.exe --connect 15.204.212.176:5555
     # ./target/compiled/main.exe --server 127.0.0.1:1235 --connect 127.0.0.1:1235
+
+run-and-profile:
+    perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
 
 server:
     LSAN_OPTIONS='suppresions=suppr.txt' \
