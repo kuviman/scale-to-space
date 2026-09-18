@@ -43,7 +43,7 @@ void _set_connected(int conn) {
 }
 
 void *has_full_message(size_t n) {
-  if (user.end < user.start + n + 4) {
+  if (user.end < user.start + n + sizeof(ServerMsgTag)) {
     // reset buffer
     if (user.start == user.end) {
       user.start = 0;
@@ -59,7 +59,7 @@ void *has_full_message(size_t n) {
     return NULL;
   }
   void *ret = user.buf + user.start;
-  user.start += n + 4;
+  user.start += n + sizeof(ServerMsgTag);
   return ret;
 }
 
