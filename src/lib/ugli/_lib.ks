@@ -15,6 +15,7 @@ const init = () => (
         panic("glewInit failed: " + error);
     );
     gl.enable(gl.DEPTH_TEST);
+    @native "glPixelStorei(GL_UNPACK_ALIGNMENT, 1)";
 
     @native ''
         {
@@ -86,6 +87,7 @@ const compile_shader = (shader_type, source) => (
 
 const AttributeInfo = newtype {
     .raw :: gl.ActiveInfo,
+    .location :: gl.AttribLocation,
     .index :: UInt32,
 };
 
@@ -137,8 +139,11 @@ impl Program as module = (
                 dbg.print(active_info);
                 panic("active_info.size != 1");
             );
+            let location = gl.get_attrib_location(program, active_info.name)
+                |> Option.unwrap;
             let attribute_info = {
                 .raw = active_info,
+                .location,
                 .index,
             };
             OrdMap.add(&mut attributes, attribute_info.raw.name, attribute_info);
@@ -525,14 +530,14 @@ const set_vertex_data_source = [V] (
         );
         gl.bind_buffer(gl.ARRAY_BUFFER, field.buffer);
         gl.vertex_attrib_pointer(
-            attribute_info^.index,
+            attribute_info^.location,
             field.@"type".size,
             field.@"type".@"type",
             false,
             field.stride,
             field.offset,
         );
-        gl.enable_vertex_attrib_array(attribute_info^.index);
+        gl.enable_vertex_attrib_array(attribute_info^.location);
     );
 );
 

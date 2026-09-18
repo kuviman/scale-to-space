@@ -198,6 +198,19 @@ const get_active_uniform = (
     include_ast get_active_impl(`(program), `(index), "glGetActiveUniform")
 );
 
+const get_attrib_location = (
+    program :: Program,
+    name :: String,
+) -> Option.t[AttribLocation] => (
+    let ctx = (@current Context);
+    let location = @native "glGetAttribLocation(\(program), String_to_C_String(\(name)))";
+    if @native "\(location) == -1" then (
+        :None
+    ) else (
+        :Some location
+    )
+);
+
 const get_uniform_location = (
     program :: Program,
     name :: String,
@@ -299,7 +312,7 @@ const buffer_data = (
 );
 
 const vertex_attrib_pointer = (
-    index :: GLuint,
+    index :: AttribLocation,
     size :: GLint,
     @"type" :: GLenum,
     normalized :: GLboolean,
@@ -318,12 +331,12 @@ const vertex_attrib_pointer = (
     '';
 );
 
-const enable_vertex_attrib_array = (index :: GLuint) -> () => (
+const enable_vertex_attrib_array = (index :: AttribLocation) -> () => (
     let ctx = (@current Context);
     @native "glEnableVertexAttribArray(\(index))";
 );
 
-const disable_vertex_attrib_array = (index :: GLuint) -> () => (
+const disable_vertex_attrib_array = (index :: AttribLocation) -> () => (
     let ctx = (@current Context);
     @native "glDisableVertexAttribArray(\(index))";
 );
@@ -407,5 +420,6 @@ const ActiveInfo = newtype {
     .size :: GLsizei,
     .@"type" :: GLenum,
 };
+const AttribLocation = @opaque_type "GLint";
 const UniformLocation = @opaque_type "GLint";
 const Texture = @opaque_type "GLuint";
