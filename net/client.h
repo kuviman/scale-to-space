@@ -226,6 +226,7 @@ void *badcop_poll_msg() {
  * Call to open a socket to the server.
  */
 int badcop_init(char *conn_str) {
+  disconnected_at = time(NULL);
   if (!*saved_conn_str) {
     strncpy(saved_conn_str, conn_str, 255);
     tcs_poll_create(&tcs_poll);
