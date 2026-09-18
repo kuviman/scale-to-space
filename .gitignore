@@ -1,4 +1,6 @@
 /.direnv/
 /target/
+/result
+*.zip
 *.exe
 *.dll

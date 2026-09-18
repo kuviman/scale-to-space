@@ -126,7 +126,6 @@
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
             (prev: {
-              openglSupport = true;
               cmakeFlags = prev.cmakeFlags ++ [
                 (lib.cmakeBool "WINDOWS" true)
                 (lib.cmakeBool "SDL_OPENGL" true)
@@ -155,26 +154,7 @@
             cp target/compiled/main.c $out/main.c
           '';
         };
-        game-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation {
-          name = "scale-to-space";
-          src = nix-filter {
-            root = ./.;
-            include = [
-              "net"
-              ".justfile"
-              "assets"
-            ];
-          };
-          buildPhase = ''
-            mkdir -p target/compiled
-            just build-windows-do ${game-c-source}/main.c
-          '';
-          installPhase = ''
-            set -e
-            mkdir -p $out/bin
-            cp target/compiled/main.exe $out/bin/
-            cp -r assets
-          '';
+        windows-dep-attrs = with pkgs.pkgsCross.mingwW64; {
           nativeBuildInputs = [
             libGL
             gcc
@@ -225,13 +205,55 @@
             boehmgc
           ];
         };
+        test-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation (windows-dep-attrs // {
+          name = "test";
+          src = nix-filter {
+            root = ./.;
+            include = [
+              ".justfile"
+              "test.c"
+            ];
+          };
+          buildPhase = ''
+            mkdir -p target/compiled
+            just build-windows-do test.c
+          '';
+          installPhase = ''
+            set -e
+            mkdir -p $out/bin
+            cp target/compiled/main.exe $out/bin/
+          '';
+        });
+        game-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation (windows-dep-attrs // {
+          name = "scale-to-space";
+          src = nix-filter {
+            root = ./.;
+            include = [
+              "net"
+              ".justfile"
+              "assets"
+            ];
+          };
+          buildPhase = ''
+            mkdir -p target/compiled
+            just build-windows-do ${game-c-source}/main.c
+          '';
+          installPhase = ''
+            set -e
+            mkdir -p $out/bin
+            cp target/compiled/main.exe $out/bin/ScaleToSpace.exe
+            cp -r assets $out/bin/
+          '';
+        });
       in
       {
         packages = {
-          inherit boehmgc-web;
-          inherit sdl3-win;
-          inherit game-c-source;
-          inherit game-win;
+          inherit
+            boehmgc-web
+            sdl3-win
+            game-c-source
+            game-win
+            test-win;
         };
         devShells.default = with pkgs;
           mkShell

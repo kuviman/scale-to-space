@@ -217,7 +217,13 @@ impl Font as module = (
                 continue;
             );
             match &font^.chars |> OrdMap.get(c) with (
-                | :None => panic("Char " + to_string(c) + " is not in font")
+                | :None => panic(
+                    "Char "
+                    + to_string(c)
+                    + "("
+                    + to_string(Char.code(c))
+                    + ") is not in font"
+                )
                 | :Some (&uv) => (
                     program |> ugli.set_uniform("u_uv_rect_pos", uv.pos, draw_state);
                     program |> ugli.set_uniform("u_uv_rect_size", uv.size, draw_state);

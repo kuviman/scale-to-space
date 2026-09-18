@@ -34,8 +34,11 @@ build-windows-do source:
         -g -O0
     # -mwindows \
 
-build-windows source="target/compiled/main.c":
-    nix develop '.?submodules=1#game-win' --command just build-windows-do {{source}}
+build-win:
+    nix build '.?submodules=1#game-win'
+
+run-win:
+    nix build '.?submodules=1#game-win' && wine result/bin/ScaleToSpace.exe
 
 build-emscripten source="target/compiled/main.c":
     rm -rf target/web
@@ -91,6 +94,9 @@ serve:
     just build-emscripten
     caddy run
 
-publish:
-    butler push target/web kuviman/scale-to-space:html5
+publish-web:
+    butler push --dereference target/web kuviman/scale-to-space:html5
+
+publish-win:
+    butler push --dereference result/bin kuviman/scale-to-space:windows
 
