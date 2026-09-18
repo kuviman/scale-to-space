@@ -3,7 +3,6 @@ default:
 
 build-c source="src/main.ks":
     ${KASTC:-kastc} compile \
-        --c-boxed-structs false \
         --target c \
         --output target/compiled/main.c \
         {{source}}
