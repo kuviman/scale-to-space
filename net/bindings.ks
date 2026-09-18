@@ -140,5 +140,6 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
             .index = @native "\(data)->index",
         };
     );
+    @native ''printf("tag = %d\\n", \(tag))'';
     panic("Unrecognized tag in server message")
 );
