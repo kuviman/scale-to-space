@@ -109,7 +109,36 @@ const TimerState = newtype (
     | :Disabled
 );
 
+const FpsCounter = newtype {
+    .frames :: Float32,
+    .start :: Float32,
+};
+
+impl FpsCounter as module = (
+    module:
+
+    const new = () -> FpsCounter => {
+        .frames = 0,
+        .start = geng.time_since_start(),
+    };
+
+    const frame = (self :: &mut FpsCounter) => (
+        self^.frames += 1;
+        if geng.time_since_start() - self^.start > 1 then (
+            self^ = new();
+        );
+    );
+
+    const fps = (self :: &FpsCounter) -> Float32 => (
+        let seconds = geng.time_since_start() - self^.start;
+        if seconds > 0.01 then (
+            self^.frames / seconds
+        ) else 0
+    );
+);
+
 const Game = newtype {
+    .fps_counter :: FpsCounter,
     .camera :: geng.Camera,
     .assets :: Assets.t,
     .model_renderer :: Model.Renderer,
@@ -455,6 +484,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .player = reset_player(.skin = 0),
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
+                .fps_counter = FpsCounter.new(),
                 .cheated = false,
                 .flate_sfx = :None,
                 .jetpack_sfx = geng.audio.play_with(assets.sfx.jetpack, { .volume = 0, .@"loop" = true }),
@@ -835,6 +865,19 @@ const handle_mmo = (self :: &mut Game) => (
                         .align = 0.5,
                     );
                 );
+                FpsCounter.frame(&mut self^.fps_counter);
+                let fps = FpsCounter.fps(&self^.fps_counter);
+                let fps = Float32_to_Int32(fps);
+                @native "glDisable(GL_DEPTH_TEST)";
+                font.Font.draw(
+                    &self^.assets.font,
+                    "FPS: " + to_string(fps),
+                    .matrix = Mat4.translate({ 10, -9.5, 0})
+                        |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
+                    .color = { 0, 0, 0, 1 },
+                    .align = 1,
+                );
+                @native "glEnable(GL_DEPTH_TEST)";
             );
             ugli.check_error();
         ),

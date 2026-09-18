@@ -56,7 +56,8 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
 
     let gl_context = SDL.GL.CreateContext(window);
     SDL.GL.MakeCurrent(window, gl_context);
-    SDL.GL.SetSwapInterval(1);
+    let vsync = (import "../../cli.ks").parse().vsync;
+    SDL.GL.SetSwapInterval(if vsync then 1 else 0);
     log("Created GL context");
 
     ugli.init();
