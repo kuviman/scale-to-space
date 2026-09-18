@@ -77,17 +77,22 @@ const Assets = (
                 &mut mesh_face.vs |> ArrayList.push_back(face.2.a_pos);
                 &mut collision_mesh |> ArrayList.push_back(mesh_face);
             );
+            let collision_mesh = collisions.Mesh.new(collision_mesh);
+            let model = Model.load(path);
+            let particle = geng.load_texture(path + "/particle.png", :Nearest);
+            let properties = (
+                let source = std.fs.read_file(path + "/properties.json");
+                let value = json.parse(&mut json.Reader.create(&source))
+                    |> Result.unwrap;
+                include_ast json.parse_value(`(value), collisions.MeshProperties)
+            );
+            let sfx = geng.audio.load(path + "/sfx.wav");
             {
-                .collision_mesh = collisions.Mesh.new(collision_mesh),
-                .model = Model.load(path),
-                .sfx = geng.audio.load(path + "/sfx.wav"),
-                .properties = (
-                    let source = std.fs.read_file(path + "/properties.json");
-                    let value = json.parse(&mut json.Reader.create(&source))
-                        |> Result.unwrap;
-                    include_ast json.parse_value(`(value), collisions.MeshProperties)
-                ),
-                .particle = geng.load_texture(path + "/particle.png", :Nearest),
+                .collision_mesh,
+                .model,
+                .sfx,
+                .properties,
+                .particle,
             }
         );
     );

@@ -46,6 +46,14 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
     );
     log("Created window");
 
+    @native ''
+        {
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        }
+    '';
+
     let gl_context = SDL.GL.CreateContext(window);
     SDL.GL.MakeCurrent(window, gl_context);
     SDL.GL.SetSwapInterval(1);
@@ -89,6 +97,7 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
             ugli.VertexBuffer.init(&data)
         ),
     };
+    ugli.check_error();
     let mut geng = {
         .window,
         .gl_context,
@@ -212,6 +221,7 @@ const run = [G :: Type] () => (
             (G as App).update(&mut state, dt);
             (G as App).draw(&mut state);
 
+            ugli.check_error();
             geng.await_next_frame();
         );
     );

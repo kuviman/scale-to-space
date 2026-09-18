@@ -15,6 +15,40 @@ const init = () => (
         panic("glewInit failed: " + error);
     );
     gl.enable(gl.DEPTH_TEST);
+
+    @native ''
+        {
+            GLuint vao;
+            glGenVertexArrays(1, &vao);
+            glBindVertexArray(vao);
+        }
+    '';
+
+    check_error();
+);
+
+const check_error = () => with_return (
+    let error = gl.get_error();
+    let error_string = if error == (@native "GL_NO_ERROR") then (
+        return
+    ) else if error == (@native "GL_INVALID_ENUM") then (
+        "GL_INVALID_ENUM"
+    ) else if error == (@native "GL_INVALID_VALUE") then (
+        "GL_INVALID_VALUE"
+    ) else if error == (@native "GL_INVALID_OPERATION") then (
+        "GL_INVALID_OPERATION"
+    ) else if error == (@native "GL_INVALID_FRAMEBUFFER_OPERATION") then (
+        "GL_INVALID_FRAMEBUFFER_OPERATION"
+    ) else if error == (@native "GL_OUT_OF_MEMORY") then (
+        "GL_OUT_OF_MEMORY"
+    ) else if error == (@native "GL_STACK_UNDERFLOW") then (
+        "GL_STACK_UNDERFLOW"
+    ) else if error == (@native "GL_STACK_OVERFLOW") then (
+        "GL_STACK_OVERFLOW"
+    ) else (
+        "Unrecognized GL error"
+    );
+    panic("OpenGL error: " + error_string);
 );
 
 const clear = (color :: Vec4) => (
@@ -175,8 +209,10 @@ impl Texture as module = (
     ) -> Texture => (
         let handle = gl.create_texture();
         gl.bind_texture(gl.TEXTURE_2D, handle);
-        gl.pixel_store_bool(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.pixel_store_bool(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        if is_emscripten() then (
+            gl.pixel_store_bool(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.pixel_store_bool(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        );
         gl.tex_parameter_i(
             gl.TEXTURE_2D,
             gl.TEXTURE_MIN_FILTER,

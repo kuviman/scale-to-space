@@ -6,6 +6,10 @@ include "./constants.ks";
 const ContextT = type ();
 const Context = @context ContextT;
 
+const get_error = () -> GLenum => (
+    @native "glGetError()"
+);
+
 const clear = (bits :: GLbitfield) -> () => (
     let ctx = (@current Context);
     @native "glClear(\(bits))";

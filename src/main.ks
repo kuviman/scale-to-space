@@ -409,7 +409,9 @@ const handle_mmo = (self :: &mut Game) => (
             @native "glEnable(GL_BLEND)";
             @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
             @native "glCullFace(GL_BACK)";
+            ugli.check_error();
             let assets = Assets.load();
+            ugli.check_error();
             let water = (
                 let mut v :: Vec2 = Vec2.mul({ 1, -1 }, 1000);
                 let mut vs = ArrayList.new();
@@ -434,6 +436,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .buffer = ugli.VertexBuffer.init(&data),
                 }
             );
+            ugli.check_error();
             {
                 .camera = {
                     .position = { 0, 0, 5 },
@@ -503,6 +506,7 @@ const handle_mmo = (self :: &mut Game) => (
             }
         ),
         .draw = self => with_return (
+            ugli.check_error();
             self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
             with Assets.Ctx = self^.assets;
             with Model.Renderer.Ctx = self^.model_renderer;
@@ -518,6 +522,7 @@ const handle_mmo = (self :: &mut Game) => (
             for level_model in &self^.assets.models.level |> ArrayList.iter do (
                 Model.draw(level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
             );
+            ugli.check_error();
             @native "glEnable(GL_CULL_FACE)";
             for &model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
                 Model.draw(model, false, Mat4.IDENTITY);
@@ -540,6 +545,7 @@ const handle_mmo = (self :: &mut Game) => (
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
+            ugli.check_error();
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
             );
@@ -563,6 +569,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .align = 0.5,
                 );
             );
+            ugli.check_error();
 
             if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < 20 then (
                 let distance = 25;
@@ -660,6 +667,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .align = 0.5,
                 );
             );
+            ugli.check_error();
 
             if Vec3.length(self^.player.position) < 40 then (
                 font.Font.draw(
@@ -757,6 +765,7 @@ const handle_mmo = (self :: &mut Game) => (
                 },
                 .framebuffer_size = geng.get_window_size(),
             );
+            ugli.check_error();
             if not self^.connected then (
                 font.Font.draw(
                     &self^.assets.font,
@@ -827,6 +836,7 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                 );
             );
+            ugli.check_error();
         ),
         .update = (self, delta_time) => with_return (
             let delta_time = min(delta_time, 0.050);
