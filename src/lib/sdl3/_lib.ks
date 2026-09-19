@@ -304,21 +304,21 @@ const App = [Self] newtype {
 };
 # const mut STORE_CONTEXT :: Option.t[@context] = :None;
 
-const EnterAppMainCallbacks = [A :: Type] () => (
-    let mut app = (A as App).init();
+const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
+    let mut app = app_impl.init();
     let result = unwindable main (
         let handle_app_result = result => match result with (
             | :Continue => ()
             | _ => unwind main result
         );
         @loop (
-            (A as App).iterate(&mut app) |> handle_app_result;
+            app_impl.iterate(&mut app) |> handle_app_result;
             while PollEvent() is :Some event do (
-                (A as App).event(&mut app, &event) |> handle_app_result;
+                app_impl.event(&mut app, &event) |> handle_app_result;
             );
         )
     );
-    (A as App).quit(app, result);
+    app_impl.quit(app, result);
     match result with (
         | :Success => ()
         | :Continue => panic("unreachable")
