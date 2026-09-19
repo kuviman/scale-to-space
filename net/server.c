@@ -191,7 +191,8 @@ int main(int argc, char *argv[])
               }
               int looping = 1;
               while(looping && (user->start + 4) <= user->end) {
-                switch(((int *)(user->buf))[user->start]) {
+                ClientMsgTag tag = *((ClientMsgTag*)(user->buf + user->start));
+                switch(tag) {
                   case ClientEmote: {
                     ClientMsgEmote* msg;
                     if (msg = has_full_message(user, sizeof(ClientMsgEmote), &looping)) {
