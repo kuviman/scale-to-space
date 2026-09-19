@@ -65,11 +65,12 @@ build-emscripten source="target/compiled/main.c":
         -s TOTAL_STACK=64MB \
         -s INITIAL_MEMORY=512MB \
         -s ASSERTIONS \
-        -s ASYNCIFY \
-        -s ASYNCIFY_STACK_SIZE=64MB \
         -s WEBSOCKET_URL="wss://d2jam4.badcop.games" \
+        -sMAX_WEBGL_VERSION=2 \
+        -s BINARYEN_EXTRA_PASSES='--spill-pointers' \
         -w
-    # -s BINARYEN_EXTRA_PASSES='--spill-pointers' \
+    # -s ASYNCIFY \
+    # -s ASYNCIFY_STACK_SIZE=64MB \
     # -sMAX_WEBGL_VERSION=2 \
 
 build src="src/main.ks":
