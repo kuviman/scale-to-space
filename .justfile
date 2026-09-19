@@ -31,7 +31,7 @@ build-windows-do source:
         -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
         -Wfatal-errors \
-        -g -O0
+        -g -O3
     # -mwindows \
 
 build-win:
