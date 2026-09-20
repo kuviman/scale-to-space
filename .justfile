@@ -64,6 +64,7 @@ build-emscripten source="target/compiled/main.c":
         --preload-file assets \
         -s TOTAL_STACK=64MB \
         -s INITIAL_MEMORY=512MB \
+        -s ALLOW_MEMORY_GROWTH \
         -s ASSERTIONS \
         -s WEBSOCKET_URL="wss://d2jam4.badcop.games" \
         -sMAX_WEBGL_VERSION=2 \
