@@ -10,6 +10,19 @@ const FINISH :: Vec3 = { -120.198761, -1.251943, 147.323959 };
 
 module:
 
+const Power = newtype (
+    | :None
+    | :Parachute {
+        .active :: Bool,
+        .rotation :: Quat,
+    }
+    | :Jetpack {
+        .active :: Bool,
+        .next_particle :: Float32,
+        .sfx :: Option.t[geng.audio.Effect],
+    }
+);
+
 const Entity = newtype {
     .skin :: Int32,
     .position :: Vec3,
@@ -19,6 +32,7 @@ const Entity = newtype {
     .angular_velocity :: Vec3,
     .can_jump :: Bool,
     .scale :: Float32,
+    .power :: Power,
 };
 
 const player_speed = 15;
@@ -41,6 +55,7 @@ impl Entity as module = (
             self^.flat_rot,
             self^.rotation,
             .jetpack,
+            .power = self^.power,
         );
     );
 );
@@ -67,6 +82,7 @@ const draw_skin = (
     flat_rot :: Angle,
     rotation :: Quat,
     .jetpack :: Bool,
+    .power :: Power,
 ) => (
     let assets = @current Assets.Ctx;
     let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets.models.skins) - 1);
@@ -98,6 +114,29 @@ const draw_skin = (
                 |> Mat4.mul_mat(Quat.into_mat4(rotation)),
         );
     );
+    match power with (
+        | :None => ()
+        | :Jetpack ref jet => (
+            Model.draw(
+                assets.powers.jetpack.model,
+                false,
+                Mat4.translate(position)
+                    |> Mat4.mul_mat(Quat.into_mat4(rotation))
+                    |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale - MIN_SCALE})),
+            );
+        )
+        | :Parachute ref par => (
+            if par^.active then (
+                Model.draw(
+                    assets.powers.parachute.model,
+                    false,
+                    Mat4.translate(position)
+                        |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale}))
+                        |> Mat4.mul_mat(Quat.into_mat4(par^.rotation)),
+                );
+            );
+        )
+    )
 );
 
 include "./other_player.ks";
@@ -161,6 +200,7 @@ const Game = newtype {
     .particles :: ArrayList.t[Particle],
     .next_fire_particle :: Float32,
     .sens :: Float32,
+    .power_index :: Int32,
 };
 
 const FIREPLACES :: ArrayList.t[Vec3] = (
@@ -200,7 +240,7 @@ const respawn_dragon_scales = () => (
     dragon_scales
 );
 
-const reset_player = (.skin) -> Entity => {
+const reset_player = (.skin, .power) -> Entity => {
     .position = { 0, 0, 10 },
     .velocity = { 0, 0, 0 },
     .rotation = Quat.IDENTITY,
@@ -209,6 +249,7 @@ const reset_player = (.skin) -> Entity => {
     .skin,
     .can_jump = false,
     .scale = 1,
+    .power,
 };
 
 const draw_particle = (
@@ -233,7 +274,10 @@ const draw_particle = (
 const restart = (self :: &mut Game) => (
     self^.dead = false;
     self^.dead_timer = 0;
-    self^.player = reset_player(.skin = self^.player.skin);
+    self^.player = reset_player(
+        .skin = self^.player.skin,
+        .power = self^.player.power,
+    );
     self^.timer = :WaitForMove;
     self^.cheated = false;
     self^.jetpack_enabled = false;
@@ -246,6 +290,61 @@ const is_jump_pressed = () => (
 
 const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
     if self^.dead then return;
+
+    match self^.player.power with (
+        | :None => ()
+        | :Jetpack ref mut jet => (
+            if jet^.active then (
+                let mat = Quat.into_mat4(self^.player.rotation);
+                let forward = Mat4.mul_vec(mat, { 1, 0, 0, 0})
+                    |> Vec4.xyz;
+                let up = Mat4.mul_vec(mat, { 0, 0, 1, 0})
+                    |> Vec4.xyz;
+                self^.player.velocity = Vec3.add(
+                    self^.player.velocity,
+                    Vec3.mul(forward, 75 * delta_time),
+                );
+                self^.player.angular_velocity = Vec3.add(
+                    self^.player.angular_velocity,
+                    Vec3.mul(
+                        Mat4.mul_vec(mat, { 0, 1, 0, 0 })
+                            |> Vec4.xyz,
+                        75 * delta_time,
+                    ),
+                );
+                jet^.next_particle -= delta_time;
+                while jet^.next_particle < 0 do (
+                    jet^.next_particle += 1 / 30;
+                    let particle = {
+                        .position = Vec3.add(
+                            self^.player.position,
+                            Vec3.mul(up, self^.player.scale + 0.2),
+                        ),
+                        .texture = self^.assets.powers.jetpack.particle,
+                        .t = 0.2,
+                    };
+                    &mut self^.particles |> ArrayList.push_back(particle);
+                );
+            );
+        )
+        | :Parachute ref mut par => (
+            if par^.active then (
+                let up = Quat.into_mat4(par^.rotation)
+                    |> Mat4.mul_vec({ 0, 0, 1, 0 })
+                    |> Vec4.xyz
+                    |> Vec3.normalize;
+                let up_velocity = Vec3.dot(up, self^.player.velocity);
+                if up_velocity < 0 then (
+                    let force = Vec3.mul(up, -up_velocity * 10);
+                    self^.player.velocity = Vec3.add(
+                        self^.player.velocity,
+                        Vec3.mul(force, delta_time),
+                    );
+                );
+            );
+        )
+    );
+
     let old_z = self^.player.position.2;
     self^.player.position = Vec3.add(
         self^.player.position,
@@ -478,7 +577,10 @@ const handle_mmo = (self :: &mut Game) => (
                 .assets,
                 .water,
                 .model_renderer = Model.Renderer.init(),
-                .player = reset_player(.skin = 0),
+                .player = reset_player(
+                    .skin = 0,
+                    .power = :None,
+                ),
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
                 .fps_counter = FpsCounter.new(),
@@ -490,6 +592,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .next_physics = 0,
                 .connected = false,
                 .show_timer = true,
+                .power_index = 0,
                 .particles = ArrayList.new(),
                 .next_fire_particle = 0,
                 .particle_buffer = (
@@ -732,6 +835,24 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 font.Font.draw(
                     &self^.assets.font,
+                    "P to cycle POSTJAM power",
+                    .matrix = Mat4.rotate_z(Angle.from_degrees(10))
+                        |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 4}))
+                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
+                    .color = { 0, 0, 0, 1 },
+                    .align = 0.5,
+                );
+                font.Font.draw(
+                    &self^.assets.font,
+                    "RMB to use POSTJAM power",
+                    .matrix = Mat4.rotate_z(Angle.from_degrees(10))
+                        |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 3}))
+                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
+                    .color = { 0, 0, 0, 1 },
+                    .align = 0.5,
+                );
+                font.Font.draw(
+                    &self^.assets.font,
                     "R to RESTART",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 0.5}))
@@ -860,13 +981,28 @@ const handle_mmo = (self :: &mut Game) => (
                 let fps = FpsCounter.fps(&self^.fps_counter);
                 let fps = Float32_to_Int32(fps);
                 @native "glDisable(GL_DEPTH_TEST)";
+                with_return (
+                    let power_text = match self^.player.power with (
+                        | :None => return
+                        | :Parachute _ => "parachute"
+                        | :Jetpack _ => "jetpack"
+                    );
+                    font.Font.draw(
+                        &self^.assets.font,
+                        "postjam power: " + power_text,
+                        .matrix = Mat4.translate({ 10, -9.5, 0})
+                            |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
+                        .color = { 0, 0, 0, 1 },
+                        .align = 1,
+                    );
+                );
                 font.Font.draw(
                     &self^.assets.font,
                     "FPS: " + to_string(fps),
-                    .matrix = Mat4.translate({ 10, -9.5, 0})
+                    .matrix = Mat4.translate({ -10, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
-                    .align = 1,
+                    .align = 0,
                 );
                 @native "glEnable(GL_DEPTH_TEST)";
             );
@@ -1126,10 +1262,16 @@ const handle_mmo = (self :: &mut Game) => (
             );
 
             let max_angular_velocity = 10;
-            let target_angular_velocity = Vec3.mul(
-                { ...Vec2.rotate_90(Vec2.rotate(wasd, self^.camera.rotation)), 0 },
-                max_angular_velocity,
-            );
+            let target_angular_velocity = Mat4.rotate_z(self^.camera.rotation)
+                |> Mat4.mul_vec((
+                    let mut w :: Vec3 = { ...Vec2.rotate_90(wasd), 0 };
+                    if geng.input.Key.is_pressed(:LeftShift) then (
+                        w = { 0, w.1, -w.0 };
+                    );
+                    { ...w, 0 }
+                ))
+                |> Vec4.xyz
+                |> Vec3.mul(max_angular_velocity);
             let angular_acceleration = 10;
             self^.player.angular_velocity = Vec3.add(
                 self^.player.angular_velocity,
@@ -1152,6 +1294,43 @@ const handle_mmo = (self :: &mut Game) => (
                 )
             )
                 |> Quat.normalize;
+            match self^.player.power with (
+                | :None => ()
+                | :Jetpack ref mut jet => (
+                    jet^.active = geng.input.MouseButton.is_pressed(:Right);
+                    if jet^.active then (
+                        if jet^.sfx is :None then (
+                            let sfx = geng.audio.play_with(
+                                self^.assets.powers.jetpack.sfx,
+                                { .volume = 0.6, .@"loop" = false },
+                            );
+                            jet^.sfx = :Some sfx;
+                        );
+                    ) else (
+                        if jet^.sfx is :Some sfx then (
+                            geng.audio.Effect.stop(sfx);
+                            jet^.sfx = :None;
+                        );
+                    );
+                )
+                | :Parachute ref mut par => (
+                    par^.active = geng.input.MouseButton.is_pressed(:Right);
+                    let target_rotation = Quat.mul_quat(
+                        Quat.from_axis_angle(
+                            { 0, 0, 1 },
+                            self^.player.flat_rot,
+                        ),
+                        Quat.from_axis_angle(
+                            { 0, 1, 0 },
+                            Angle.from_degrees(30 * Vec2.length(wasd)),
+                        ),
+                    );
+                    par^.rotation = Quat.normalize(Quat.add(
+                        par^.rotation,
+                        Quat.mul(Quat.sub(target_rotation, par^.rotation), min(1, delta_time / 0.2)),
+                    ));
+                )
+            );
             self^.next_physics -= delta_time;
             while self^.next_physics < -0.0001 do (
                 const MAX_DISTANCE_A_FRAME = 0.2;
@@ -1207,6 +1386,23 @@ const handle_mmo = (self :: &mut Game) => (
                 )
                 | :KeyPress :H => (
                     self^.show_timer = not self^.show_timer;
+                )
+                | :KeyPress :P => (
+                    self^.power_index = (self^.power_index + 1) % 3;
+                    if self^.power_index == 0 then (
+                        self^.player.power = :None;
+                    ) else if self^.power_index == 1 then (
+                        self^.player.power = :Parachute {
+                            .active = false,
+                            .rotation = Quat.IDENTITY,
+                        };
+                    ) else if self^.power_index == 2 then (
+                        self^.player.power = :Jetpack {
+                            .active = true,
+                            .next_particle = 0,
+                            .sfx = :None,
+                        };
+                    ) else panic("TOO BIG POWER INDEX");
                 )
                 | :MousePress _ => (
                     SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);

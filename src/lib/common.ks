@@ -24,7 +24,7 @@ const is_emscripten = () -> Bool => @native ''
 
 const yield = () => (
     @native ''
-        #ifdef __EMSCRIPTEN__
+        #if defined(__EMSCRIPTEN__) && defined(GC_ON_INTERVAL_EMSCRIPTEN)
             emscripten_sleep(0)
         #else
             (Unit){}

@@ -296,52 +296,133 @@ const AppResult = newtype (
     | :Continue
 );
 
+impl AppResult as module = (
+    module:
+
+    const into_raw = (self :: AppResult) -> RawAppResult => (
+        match self with (
+            | :Success => @native "SDL_APP_SUCCESS"
+            | :Failure => @native "SDL_APP_FAILURE"
+            | :Continue => @native "SDL_APP_CONTINUE"
+        )
+    );
+
+    const from_raw = (raw :: RawAppResult) -> AppResult => (
+        if @native "\(raw) == SDL_APP_SUCCESS" then (
+            :Success
+        ) else if @native "\(raw) == SDL_APP_FAILURE" then (
+            :Failure
+        ) else if @native "\(raw) == SDL_APP_CONTINUE" then (
+            :Continue
+        ) else (
+            panic("Unrecognized SDL_AppResult")
+        )
+    );
+);
+
 const App = [Self] newtype {
     .init :: () -> Self,
     .iterate :: &mut Self -> AppResult,
     .event :: (&mut Self, &Event) -> AppResult,
     .quit :: (Self, AppResult) -> (),
 };
-# const mut STORE_CONTEXT :: Option.t[@context] = :None;
 
-const EnterAppMainCallbacks = [A :: Type] () => (
-    let mut app = (A as App).init();
+const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
+    @comment_out (
+    let mut app = app_impl.init();
     let result = unwindable main (
         let handle_app_result = result => match result with (
             | :Continue => ()
             | _ => unwind main result
         );
         @loop (
-            (A as App).iterate(&mut app) |> handle_app_result;
+            app_impl.iterate(&mut app) |> handle_app_result;
             while PollEvent() is :Some event do (
-                (A as App).event(&mut app, &event) |> handle_app_result;
+                app_impl.event(&mut app, &event) |> handle_app_result;
             );
         )
     );
-    (A as App).quit(app, result);
+    app_impl.quit(app, result);
     match result with (
         | :Success => ()
         | :Continue => panic("unreachable")
         | :Failure => std.sys.exit(-1)
     )
-(#
-    STORE_CONTEXT = :Some @context;
-    const AppStateRef = @opaque_type "void**";
+    );
+    # Actual impl
+    const mut STORE_CONTEXT :: Option.t[type (@context)] = :None;
+    const void_star = @opaque_type "void*";
+    const void_star_star = @opaque_type "void**";
+    const mut STORE_APP_IMPL :: Option.t[void_star] = :None;
+    STORE_CONTEXT = :Some (@context);
+    STORE_APP_IMPL = :Some (@native "(void*)\(&app_impl)");
     const init_callback = [A] fn @call "C" (
-        app_state :: AppStateRef,
+        app_state :: void_star_star,
         _argc :: @opaque_type "int",
         _argv :: @opaque_type "char**",
     ) -> RawAppResult => (
-        with @context = STORE_CONTEXT |> Option.unwrap;
-        let initialized_app = (A as App).init();
-        @native "*\(app_state) = \(initialized_app)";
+        let mut context = @native "(Context) {}";
+        let &@context = &mut context;
+        let mut context = STORE_CONTEXT |> Option.unwrap;
+        let &@context = &mut context;
+        let app_impl = STORE_APP_IMPL |> Option.unwrap;
+        let app_impl :: &App[A] = @native "\(app_impl)";
+        let app_impl = app_impl^;
+        let mut initialized_app = app_impl.init();
+        @native "*\(app_state) = (void*) \(&mut initialized_app)";
         @native "SDL_APP_CONTINUE"
+    );
+    const iterate_callback = [A] fn @call "C" (
+        app_state :: void_star,
+    ) -> RawAppResult => (
+        let mut context = @native "(Context) {}";
+        let &@context = &mut context;
+        let mut context = STORE_CONTEXT |> Option.unwrap;
+        let &@context = &mut context;
+        let app_impl = STORE_APP_IMPL |> Option.unwrap;
+        let app_impl :: &App[A] = @native "\(app_impl)";
+        let app_impl = app_impl^;
+        let app_state :: &mut A = @native "\(app_state)";
+        app_impl.iterate(app_state)
+            |> AppResult.into_raw
+    );
+    const event_callback = [A] fn @call "C" (
+        app_state :: void_star,
+        event :: &Event,
+    ) -> RawAppResult => (
+        let mut context = @native "(Context) {}";
+        let &@context = &mut context;
+        let mut context = STORE_CONTEXT |> Option.unwrap;
+        let &@context = &mut context;
+        let app_impl = STORE_APP_IMPL |> Option.unwrap;
+        let app_impl :: &App[A] = @native "\(app_impl)";
+        let app_impl = app_impl^;
+        let app_state :: &mut A = @native "\(app_state)";
+        app_impl.event(app_state, event)
+            |> AppResult.into_raw
+    );
+    const quit_callback = [A] fn @call "C" (
+        app_state :: void_star,
+        result ::RawAppResult,
+    ) -> () => (
+        let mut context = @native "(Context) {}";
+        let &@context = &mut context;
+        let mut context = STORE_CONTEXT |> Option.unwrap;
+        let &@context = &mut context;
+        let app_impl = STORE_APP_IMPL |> Option.unwrap;
+        let app_impl :: &App[A] = @native "\(app_impl)";
+        let app_impl = app_impl^;
+        let app_state :: &mut A = @native "\(app_state)";
+        app_impl.quit(app_state^, result |> AppResult.from_raw);
     );
     @native ''
         SDL_EnterAppMainCallbacks(
             CLI_ARGS.argc,
             CLI_ARGS.original_argv,
-            \(init_callback[A])
+            \(init_callback[A]),
+            \(iterate_callback[A]),
+            \(event_callback[A]),
+            \(quit_callback[A])
         )
     '';
-#) );
+);

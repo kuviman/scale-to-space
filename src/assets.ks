@@ -18,6 +18,18 @@ const Assets = (
         .shaders :: Shaders,
         .textures :: Textures,
         .models :: Models,
+        .powers :: Powers,
+    };
+
+    const Powers = newtype {
+        .parachute :: {
+            .model :: Model.t,
+        },
+        .jetpack :: {
+            .model :: Model.t,
+            .particle :: ugli.Texture,
+            .sfx :: geng.audio.Buffer,
+        },
     };
 
     const Ctx = @context t;
@@ -242,6 +254,16 @@ const Assets = (
             .shaders,
             .textures,
             .models,
+            .powers = {
+                .parachute = {
+                    .model = Model.load("assets/powers/parachute"),
+                },
+                .jetpack = {
+                    .model = Model.load("assets/powers/jetpack"),
+                    .particle = geng.load_texture("assets/powers/jetpack/particle.png", :Nearest),
+                    .sfx = geng.audio.load("assets/powers/jetpack/sfx.wav"),
+                },
+            },
         }
     );
 );

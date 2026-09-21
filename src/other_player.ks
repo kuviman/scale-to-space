@@ -100,6 +100,7 @@ impl OtherPlayer as module = (
             self^.flat_rot,
             self^.rotation.value,
             .jetpack = self^.jetpack,
+            .power = :None,
         );
     );
 );

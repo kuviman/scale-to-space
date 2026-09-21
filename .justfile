@@ -15,8 +15,8 @@ build-native source="target/compiled/main.c":
         -pthread \
         -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -fsanitize=address,leak,undefined \
-        -g -O3
+        -g -O0
+    # -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
 
 build-windows-do source:
@@ -64,12 +64,14 @@ build-emscripten source="target/compiled/main.c":
         --preload-file assets \
         -s TOTAL_STACK=64MB \
         -s INITIAL_MEMORY=512MB \
+        -s ALLOW_MEMORY_GROWTH \
         -s ASSERTIONS \
-        -s ASYNCIFY \
-        -s ASYNCIFY_STACK_SIZE=64MB \
         -s WEBSOCKET_URL="wss://d2jam4.badcop.games" \
+        -sMAX_WEBGL_VERSION=2 \
+        -s BINARYEN_EXTRA_PASSES='--spill-pointers' \
         -w
-    # -s BINARYEN_EXTRA_PASSES='--spill-pointers' \
+    # -s ASYNCIFY \
+    # -s ASYNCIFY_STACK_SIZE=64MB \
     # -sMAX_WEBGL_VERSION=2 \
 
 build src="src/main.ks":

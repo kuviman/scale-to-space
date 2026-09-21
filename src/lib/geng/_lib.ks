@@ -26,7 +26,8 @@ include_ast ugli.Vertex_derive(Vertex);
 
 const ContextT = newtype {
     .window :: SDL.Window,
-    .gl_context :: SDL.GL.Context,
+    .sdl_gl_context :: SDL.GL.Context,
+    .gl_context :: gl.ContextT,
     .quad :: {
         .program :: ugli.Program,
         .buffer :: ugli.VertexBuffer.t[Vertex],
@@ -36,7 +37,7 @@ const Context = @context ContextT;
 
 const log = print;
 
-const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
+const init = () -> ContextT => (
     log("Initializing");
     SDL.Init(@native "SDL_INIT_VIDEO");
     let window = SDL.CreateWindow(
@@ -55,8 +56,8 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
         }
     '';
 
-    let gl_context = SDL.GL.CreateContext(window);
-    SDL.GL.MakeCurrent(window, gl_context);
+    let sdl_gl_context = SDL.GL.CreateContext(window);
+    SDL.GL.MakeCurrent(window, sdl_gl_context);
     let vsync = cli.parse().vsync;
     SDL.GL.SetSwapInterval(if vsync then 1 else 0);
     log("Created GL context");
@@ -100,14 +101,11 @@ const init = () -> { .geng :: ContextT, .gl :: gl.ContextT } => (
         ),
     };
     ugli.check_error();
-    let mut geng = {
-        .window,
-        .gl_context,
-        .quad,
-    };
     {
-        .geng,
-        .gl = (),
+        .window,
+        .sdl_gl_context,
+        .gl_context = (),
+        .quad,
     }
 );
 
@@ -190,42 +188,70 @@ const App = [Self] newtype {
     .draw :: &mut Self -> (),
 };
 
+const SDL_App = [G] newtype {
+    .game :: G,
+    .time :: Float32,
+    .geng_ctx :: ContextT,
+    .input :: input.ContextT,
+    .audio :: audio.ContextT,
+};
+
 const run = [G :: Type] () => (
-    let { .geng = geng_ctx, .gl = gl_ctx } = geng.init();
-
-    with geng.Context = geng_ctx;
-    with gl.Context = gl_ctx;
-
-    with geng.input.Context = geng.input.init();
-    with geng.audio.Context = geng.audio.init();
-
-    let mut t = geng.time_since_start();
-
-    let mut state = (G as App).init();
-    # @native "GC_disable()";
-
-    with_return (
-        loop (
-            let framebuffer_size = geng.get_window_size();
-            let dt = (
-                let new_t = geng.time_since_start();
-                let dt = new_t - t;
-                t = new_t;
-                dt
+    let sdl_app :: SDL.App[SDL_App[G]] = {
+        .init = () => (
+            let geng_ctx = geng.init();
+            let input = geng.input.init();
+            let audio = geng.audio.init();
+            with geng.Context = geng_ctx;
+            with gl.Context = geng_ctx.gl_context;
+            with geng.input.Context = input;
+            with geng.audio.Context = audio;
+            {
+                .game = (G as App).init(),
+                .time = time_since_start(),
+                .geng_ctx,
+                .input,
+                .audio,
+            }
+        ),
+        .iterate = self => (
+            with geng.Context = self^.geng_ctx;
+            with gl.Context = self^.geng_ctx.gl_context;
+            with geng.input.Context = self^.input;
+            with geng.audio.Context = self^.audio;
+            let delta_time = (
+                let new_time = geng.time_since_start();
+                let delta_time = new_time - self^.time;
+                self^.time = new_time;
+                delta_time
             );
-            for event in geng.input.iter_events() do (
-                if event is :Quit then (
-                    return;
-                );
-                (G as App).handle_event(&mut state, event);
-            );
-            (G as App).update(&mut state, dt);
-            (G as App).draw(&mut state);
-
+            (G as App).update(&mut self^.game, delta_time);
+            (G as App).draw(&mut self^.game);
             ugli.check_error();
             geng.await_next_frame();
-        );
-    );
-
-    geng.deinit();
+            :Continue
+        ),
+        .event = (self, &event) => with_return (
+            with geng.Context = self^.geng_ctx;
+            with gl.Context = self^.geng_ctx.gl_context;
+            with geng.input.Context = self^.input;
+            with geng.audio.Context = self^.audio;
+            if geng.input.convert(event) is :Some event then (
+                if event is :Quit then (
+                    return :Success;
+                );
+                (G as App).handle_event(&mut self^.game, event);
+            );
+            :Continue
+        ),
+        .quit = (mut self, result) => (
+            let self = &mut self;
+            with geng.Context = self^.geng_ctx;
+            with gl.Context = self^.geng_ctx.gl_context;
+            with geng.input.Context = self^.input;
+            with geng.audio.Context = self^.audio;
+            geng.deinit();
+        ),
+    };
+    SDL.EnterAppMainCallbacks[SDL_App[G]](sdl_app);
 );
