@@ -18,6 +18,13 @@ const Assets = (
         .shaders :: Shaders,
         .textures :: Textures,
         .models :: Models,
+        .powers :: Powers,
+    };
+
+    const Powers = newtype {
+        .parachute :: {
+            .model :: Model.t,
+        },
     };
 
     const Ctx = @context t;
@@ -242,6 +249,11 @@ const Assets = (
             .shaders,
             .textures,
             .models,
+            .powers = {
+                .parachute = {
+                    .model = Model.load("assets/powers/parachute"),
+                },
+            },
         }
     );
 );

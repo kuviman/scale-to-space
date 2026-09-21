@@ -183,29 +183,31 @@ const MouseButton = newtype (
 impl MouseButton as module = (
     module:
 
-    const from_raw = (raw :: Int32) -> Option.t[MouseButton] => (
-        if raw == 0 then (
-            :Some (:Left)
-        ) else if raw == 1 then (
-            :Some (:Middle)
-        ) else if raw == 2 then (
-            :Some (:Right)
+    const Raw = @opaque_type "int";
+
+    const from_raw = (raw :: Raw) -> Option.t[MouseButton] => (
+        if @native "\(raw) == SDL_BUTTON_LEFT" then (
+            :Some :Left
+        ) else if @native "\(raw) == SDL_BUTTON_MIDDLE" then (
+            :Some :Middle
+        ) else if @native "\(raw) == SDL_BUTTON_RIGHT" then (
+            :Some :Right
         ) else (
             :None
         )
     );
 
-    const into_raw = (button :: MouseButton) -> Int32 => (
+    const into_raw = (button :: MouseButton) -> Raw => (
         match button with (
-            | :Left => 0
-            | :Middle => 1
-            | :Right => 2
+            | :Left => @native "SDL_BUTTON_LEFT"
+            | :Middle => @native "SDL_BUTTON_MIDDLE"
+            | :Right => @native "SDL_BUTTON_RIGHT"
         )
     );
 
     const is_pressed = (button :: MouseButton) -> Bool => (
-        # TODO
-        false
+        let mask :: @opaque_type "SDL_MouseButtonFlags" = @native "SDL_BUTTON_MASK(\(into_raw(button)))";
+        @native "(SDL_GetMouseState(NULL, NULL) & \(mask)) != 0"
     );
 );
 
@@ -226,15 +228,8 @@ const convert = (event :: SDL.Event) -> Option.t[Event] => with_return (
         let window_size = geng.get_window_size();
         let pos = { pos.0, window_size.1 - 1 - pos.1 };
         return :Some :PointerPress { .pos };
-        let button = if @native "\(event).button.button == SDL_BUTTON_LEFT" then (
-            :Left
-        ) else if @native "\(event).button.button == SDL_BUTTON_MIDDLE" then (
-            :Middle
-        ) else if @native "\(event).button.button == SDL_BUTTON_RIGHT" then (
-            :Right
-        ) else (
-            return :None
-        );
+        let button = MouseButton.from_raw(@native "\(event).button.button")
+            |> Option.unwrap_or_else(() => return :None);
         :Some :MousePress { .button }
     ) else if @native "\(event).type == SDL_EVENT_QUIT" then (
         :Some :Quit

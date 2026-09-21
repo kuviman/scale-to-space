@@ -15,8 +15,8 @@ build-native source="target/compiled/main.c":
         -pthread \
         -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -fsanitize=address,leak,undefined \
-        -g -O3
+        -g -O0
+    # -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
 
 build-windows-do source:
