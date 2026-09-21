@@ -201,7 +201,13 @@ const Game = newtype {
     .next_fire_particle :: Float32,
     .sens :: Float32,
     .power_index :: Int32,
+    .control_mode :: ControlMode,
 };
+
+const ControlMode = newtype (
+    | :RelativeToCamera
+    | :RelativeToFace
+);
 
 const FIREPLACES :: ArrayList.t[Vec3] = (
     let mut list = ArrayList.new[Vec3]();
@@ -594,6 +600,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .show_timer = true,
                 .power_index = 0,
                 .particles = ArrayList.new(),
+                .control_mode = :RelativeToCamera,
                 .next_fire_particle = 0,
                 .particle_buffer = (
                     let mut data :: ArrayList.t[obj.Vertex] = ArrayList.new();
@@ -990,19 +997,33 @@ const handle_mmo = (self :: &mut Game) => (
                     font.Font.draw(
                         &self^.assets.font,
                         "postjam power: " + power_text,
-                        .matrix = Mat4.translate({ 10, -9.5, 0})
+                        .matrix = Mat4.translate({ 2, -9.5, 0})
                             |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                         .color = { 0, 0, 0, 1 },
-                        .align = 1,
+                        .align = 0,
+                    );
+                );
+                with_return (
+                    let text = match self^.control_mode with (
+                        | :RelativeToCamera => return
+                        | :RelativeToFace => "controls relative to face"
+                    );
+                    font.Font.draw(
+                        &self^.assets.font,
+                        text,
+                        .matrix = Mat4.translate({ 2, -8.5, 0})
+                            |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
+                        .color = { 0, 0, 0, 1 },
+                        .align = 0,
                     );
                 );
                 font.Font.draw(
                     &self^.assets.font,
                     "FPS: " + to_string(fps),
-                    .matrix = Mat4.translate({ -10, -9.5, 0})
+                    .matrix = Mat4.translate({ -2, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
-                    .align = 0,
+                    .align = 1,
                 );
                 @native "glEnable(GL_DEPTH_TEST)";
             );
@@ -1262,16 +1283,22 @@ const handle_mmo = (self :: &mut Game) => (
             );
 
             let max_angular_velocity = 10;
-            let target_angular_velocity = Mat4.rotate_z(self^.camera.rotation)
-                |> Mat4.mul_vec((
+            let target_angular_velocity = (
+                let w = (
                     let mut w :: Vec3 = { ...Vec2.rotate_90(wasd), 0 };
                     if geng.input.Key.is_pressed(:LeftShift) then (
                         w = { 0, w.1, -w.0 };
                     );
                     { ...w, 0 }
-                ))
-                |> Vec4.xyz
-                |> Vec3.mul(max_angular_velocity);
+                );
+                let mat = match self^.control_mode with (
+                    | :RelativeToCamera => Mat4.rotate_z(self^.camera.rotation)
+                    | :RelativeToFace => Quat.into_mat4(self^.player.rotation)
+                );
+                mat |> Mat4.mul_vec(w)
+                    |> Vec4.xyz
+                    |> Vec3.mul(max_angular_velocity)
+            );
             let angular_acceleration = 10;
             self^.player.angular_velocity = Vec3.add(
                 self^.player.angular_velocity,
@@ -1370,6 +1397,12 @@ const handle_mmo = (self :: &mut Game) => (
                 )
                 | :KeyPress :R => (
                     restart(self);
+                )
+                | :KeyPress :C => (
+                    self^.control_mode = match self^.control_mode with (
+                        | :RelativeToCamera => :RelativeToFace
+                        | :RelativeToFace => :RelativeToCamera
+                    );
                 )
                 | :KeyPress :F => (
                     self^.jetpack_enabled = not self^.jetpack_enabled;
