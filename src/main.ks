@@ -835,6 +835,24 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 font.Font.draw(
                     &self^.assets.font,
+                    "P to cycle POSTJAM power",
+                    .matrix = Mat4.rotate_z(Angle.from_degrees(10))
+                        |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 4}))
+                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
+                    .color = { 0, 0, 0, 1 },
+                    .align = 0.5,
+                );
+                font.Font.draw(
+                    &self^.assets.font,
+                    "RMB to use POSTJAM power",
+                    .matrix = Mat4.rotate_z(Angle.from_degrees(10))
+                        |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 3}))
+                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
+                    .color = { 0, 0, 0, 1 },
+                    .align = 0.5,
+                );
+                font.Font.draw(
+                    &self^.assets.font,
                     "R to RESTART",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 0.5}))
@@ -963,13 +981,28 @@ const handle_mmo = (self :: &mut Game) => (
                 let fps = FpsCounter.fps(&self^.fps_counter);
                 let fps = Float32_to_Int32(fps);
                 @native "glDisable(GL_DEPTH_TEST)";
+                with_return (
+                    let power_text = match self^.player.power with (
+                        | :None => return
+                        | :Parachute _ => "parachute"
+                        | :Jetpack _ => "jetpack"
+                    );
+                    font.Font.draw(
+                        &self^.assets.font,
+                        "postjam power: " + power_text,
+                        .matrix = Mat4.translate({ 10, -9.5, 0})
+                            |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
+                        .color = { 0, 0, 0, 1 },
+                        .align = 1,
+                    );
+                );
                 font.Font.draw(
                     &self^.assets.font,
                     "FPS: " + to_string(fps),
-                    .matrix = Mat4.translate({ 10, -9.5, 0})
+                    .matrix = Mat4.translate({ -10, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
-                    .align = 1,
+                    .align = 0,
                 );
                 @native "glEnable(GL_DEPTH_TEST)";
             );
