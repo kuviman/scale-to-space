@@ -71,6 +71,7 @@ impl Entity as module = (
             self^.rotation,
             .jetpack,
             .power = self^.power,
+            .volley = not self^.is_player,
         );
     );
 
@@ -293,6 +294,7 @@ const draw_skin = (
     rotation :: Quat,
     .jetpack :: Bool,
     .power :: Power,
+    .volley :: Bool,
 ) => (
     let assets = @current Assets.Ctx;
     let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets.models.skins) - 1);
@@ -316,7 +318,11 @@ const draw_skin = (
     );
     if not jetpack or skin != 5 then (
         Model.draw(
-            assets.models.skins.[skin],
+            if volley then (
+                assets.volleyball
+            ) else (
+                assets.models.skins.[skin]
+            ),
             false,
             Mat4.translate(position)
                 |> Mat4.mul_mat(Mat4.scale_uniform(scale))

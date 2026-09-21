@@ -19,6 +19,7 @@ const Assets = (
         .textures :: Textures,
         .models :: Models,
         .powers :: Powers,
+        .volleyball :: Model.t,
     };
 
     const Powers = newtype {
@@ -264,6 +265,7 @@ const Assets = (
                     .sfx = geng.audio.load("assets/powers/jetpack/sfx.wav"),
                 },
             },
+            .volleyball = Model.load("assets/models/volleyball"),
         }
     );
 );

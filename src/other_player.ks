@@ -101,6 +101,7 @@ impl OtherPlayer as module = (
             self^.rotation.value,
             .jetpack = self^.jetpack,
             .power = :None,
+            .volley = false,
         );
     );
 );
