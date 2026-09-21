@@ -96,7 +96,7 @@ impl OtherPlayer as module = (
             self^.skin,
             self^.position.value,
             self^.vel,
-            self^.scale.value,
+            clamp(self^.scale.value, .min = 1, .max = 2),
             self^.flat_rot,
             self^.rotation.value,
             .jetpack = self^.jetpack,

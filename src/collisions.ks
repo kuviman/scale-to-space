@@ -195,56 +195,118 @@ const CollisionResult = newtype {
     .normal :: Vec3,
 };
 
-const collide_and_react = (
+const Entity = newtype {
     .position :: &mut Vec3,
     .velocity :: &mut Vec3,
     .angular_velocity :: &mut Vec3,
     .radius_change_speed :: Float32,
     .radius :: Float32,
+    .inverse_mass :: Float32,
+};
+
+const do_react_entities = (
+    a :: Entity,
+    b :: Entity,
+    collision :: Collision,
+    .properties :: &MeshProperties,
+) -> CollisionResult => (
+    let bounciness = properties^.bounciness;
+    let jump_modifier = 4;
+    let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    a.position^ = Vec3.add(
+        a.position^,
+        Vec3.mul(collision.normal, collision.penetration * ka),
+    );
+    b.position^ = Vec3.add(
+        b.position^,
+        Vec3.mul(collision.normal, collision.penetration * kb),
+    );
+    let relative_velocity = () => Vec3.sub(a.velocity^, b.velocity^);
+    let radius_change_speed = a.radius_change_speed + b.radius_change_speed;
+    let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
+        - radius_change_speed * jump_modifier;
+    let bounce_rel_vel = Vec3.dot(relative_velocity(), collision.normal);
+    if bounce_rel_vel < 0 then (
+        a.velocity^ = Vec3.add(
+            a.velocity^,
+            Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * ka),
+        );
+        b.velocity^ = Vec3.add(
+            b.velocity^,
+            Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * kb),
+        );
+    );
+    (
+        let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
+            - radius_change_speed * jump_modifier;
+        if velocity_along_normal < 0 then (
+            a.velocity^ = Vec3.add(
+                a.velocity^,
+                Vec3.mul(collision.normal, -velocity_along_normal * ka),
+            );
+            b.velocity^ = Vec3.add(
+                b.velocity^,
+                Vec3.mul(collision.normal, -velocity_along_normal * kb),
+            );
+        );
+    );
+    let relative_angular_velocity = Vec3.sub(a.angular_velocity^, b.angular_velocity^);
+    let relative_angular_velocity = Vec3.add(
+        relative_angular_velocity,
+        Vec3.div(Vec3.cross(relative_velocity(), collision.normal), a.radius),
+    );
+    let friction = properties^.friction;
+    let angular_impulse = Vec3.mul(
+        relative_angular_velocity,
+        -min(friction, max(0, -bounce_rel_vel) * friction),
+    );
+    a.velocity^ = Vec3.sub(
+        a.velocity^,
+        Vec3.mul(Vec3.cross(angular_impulse, collision.normal), ka),
+    );
+    b.velocity^ = Vec3.sub(
+        b.velocity^,
+        Vec3.mul(Vec3.cross(angular_impulse, collision.normal), kb),
+    );
+    a.angular_velocity^ = Vec3.add(a.angular_velocity^, Vec3.mul(angular_impulse, ka));
+    b.angular_velocity^ = Vec3.add(b.angular_velocity^, Vec3.mul(angular_impulse, kb));
+    { .velocity_along_normal, .normal = collision.normal }
+);
+
+const collide_and_react_entities = (a :: Entity, b :: Entity) -> Option.t[CollisionResult] => (
+    let delta_pos = Vec3.sub(a.position^, b.position^);
+    let distance = delta_pos |> Vec3.length;
+    let penetration = a.radius + b.radius - distance;
+    if penetration > 0 then (
+        let normal = delta_pos |> Vec3.normalize_or_zero;
+        let properties = &{
+            .bounciness = 0.5,
+            .friction = 0.0,
+            .animated = false,
+            .particles = 0,
+            .particle_t = 0,
+            .particle_spread = 0,
+        };
+        :Some do_react_entities(a, b, { .normal, .penetration }, .properties)
+    ) else :None
+);
+
+const collide_and_react = (
+    entity :: Entity,
     .mesh :: &Mesh,
     .properties :: &MeshProperties,
 ) -> Option.t[CollisionResult] => (
-    let bounciness = properties^.bounciness;
-    let jump_modifier = 4;
-    if collide({ .position = position^, .radius }, mesh) is :Some collision then (
-        position^ = Vec3.add(
-            position^,
-            Vec3.mul(collision.normal, collision.penetration),
-        );
-        let velocity_along_normal = Vec3.dot(velocity^, collision.normal)
-        - radius_change_speed * jump_modifier;
-        let bounce_rel_vel = Vec3.dot(velocity^, collision.normal);
-        if bounce_rel_vel < 0 then (
-            velocity^ = Vec3.add(
-                velocity^,
-                Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel),
-            );
-        );
-        (
-            let velocity_along_normal = Vec3.dot(velocity^, collision.normal)
-            - radius_change_speed * jump_modifier;
-            if velocity_along_normal < 0 then (
-                velocity^ = Vec3.add(
-                    velocity^,
-                    Vec3.mul(collision.normal, -velocity_along_normal),
-                );
-            );
-        );
-        let relative_angular_velocity = Vec3.add(
-            angular_velocity^,
-            Vec3.div(Vec3.cross(velocity^, collision.normal), radius),
-        );
-        let friction = properties^.friction;
-        let angular_impulse = Vec3.mul(
-            relative_angular_velocity,
-            -min(friction, max(0, -bounce_rel_vel) * friction),
-        );
-        velocity^ = Vec3.sub(
-            velocity^,
-            Vec3.cross(angular_impulse, collision.normal),
-        );
-        angular_velocity^ = Vec3.add(angular_velocity^, angular_impulse);
-        :Some { .velocity_along_normal, .normal = collision.normal }
+    if collide({ .position = entity.position^, .radius = entity.radius }, mesh) is :Some collision then (
+        let mesh_entity = {
+            .position = &mut { 0, 0, 0 },
+            .velocity = &mut { 0, 0, 0 },
+            .angular_velocity = &mut { 0, 0, 0 },
+            .radius_change_speed = 0,
+            .radius = 0,
+            .inverse_mass = 0,
+        };
+        :Some do_react_entities(entity, mesh_entity, collision, .properties)
     ) else (
         :None
     )

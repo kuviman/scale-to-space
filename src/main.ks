@@ -21,6 +21,9 @@ const Power = newtype (
         .next_particle :: Float32,
         .sfx :: Option.t[geng.audio.Effect],
     }
+    | :Antigravity {
+        .active :: Bool,
+    }
 );
 
 const Entity = newtype {
@@ -32,16 +35,28 @@ const Entity = newtype {
     .angular_velocity :: Vec3,
     .can_jump :: Bool,
     .scale :: Float32,
+    .scale_speed :: Float32,
     .power :: Power,
+    .is_player :: Bool,
+    .input :: PlayerInput,
+    .min_scale :: Float32,
+    .max_scale :: Float32,
+    .mass :: Float32,
 };
 
 const player_speed = 15;
 const player_acceleration = 20;
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 2;
-
 const MAX_SPEED = 200;
+
+const PlayerInput = newtype {
+    .wasd :: Vec2,
+    .shift :: Bool,
+    .space :: Bool,
+    .use_power :: Bool,
+    .jetpack_enabled :: Bool,
+    .control_mode :: ControlMode,
+};
 
 impl Entity as module = (
     module:
@@ -56,6 +71,201 @@ impl Entity as module = (
             self^.rotation,
             .jetpack,
             .power = self^.power,
+        );
+    );
+
+    const update_input = (
+        self :: &mut Game,
+        entity :: &mut Entity,
+        delta_time :: Float32,
+        input :: PlayerInput,
+    ) => (
+        entity^.input = input;
+        if input.jetpack_enabled then (
+            let target_velocity :: Vec3 = {
+                ...Vec2.rotate(
+                    Vec2.mul(Vec2.normalize_or_zero(input.wasd), player_speed),
+                    self^.camera.rotation,
+                ),
+                (
+                    let mut z = 0;
+                    if input.space then (
+                        z += 1;
+                    );
+                    if input.shift then (
+                        z -= 1;
+                    );
+                    z * player_speed
+                ),
+            };
+            entity^.velocity = Vec3.add(
+                entity^.velocity,
+                Vec3.mul(
+                    Vec3.sub(target_velocity, entity^.velocity),
+                    min(player_acceleration * delta_time, 1),
+                ),
+            );
+        ) else (
+            if entity^.position.2 < 0 then (
+                let water_force = 5;
+                let target_velocity :: Vec3 = {
+                    ...Vec2.rotate(
+                        Vec2.mul(Vec2.normalize_or_zero(input.wasd), player_speed),
+                        self^.camera.rotation,
+                    ),
+                    player_speed,
+                };
+                entity^.velocity = Vec3.add(
+                    entity^.velocity,
+                    Vec3.mul(
+                        Vec3.sub(target_velocity, entity^.velocity),
+                        min(water_force * delta_time, 1),
+                    ),
+                );
+            ) else (
+                let target_velocity :: Vec3 = {
+                    ...Vec2.rotate(
+                        Vec2.mul(Vec2.normalize_or_zero(input.wasd), player_speed),
+                        self^.camera.rotation,
+                    ),
+                    entity^.velocity.2,
+                };
+                let air_control = 0.5;
+                entity^.velocity = Vec3.add(
+                    entity^.velocity,
+                    Vec3.mul(
+                        Vec3.sub(target_velocity, entity^.velocity),
+                        min(air_control * delta_time, 1),
+                    ),
+                );
+                let antigravity = if entity^.power is :Antigravity { .active, ... } then active else false;
+                let gravity = if antigravity then 5 else 50;
+                entity^.velocity.2 -= gravity * delta_time;
+                if antigravity then (
+                    let damp = 0.30;
+                    entity^.velocity = Vec3.sub(
+                        entity^.velocity,
+                        Vec3.mul(entity^.velocity, min(1, delta_time * damp)),
+                    );
+                );
+            );
+        );
+
+        let scale_dir = if not input.jetpack_enabled and input.space then (
+            if entity^.scale < entity^.max_scale then (
+                1
+            ) else 0
+        ) else (
+            if entity^.scale > entity^.min_scale then (
+                -1
+            ) else 0
+        );
+        let scale_speed = Int32_to_Float32(scale_dir);
+        let scale_time = 0.2;
+        let scale_speed = scale_speed / scale_time;
+        entity^.scale_speed = scale_speed;
+        entity^.scale = clamp(
+            entity^.scale + entity^.scale_speed * delta_time,
+            .min = entity^.min_scale,
+            .max = entity^.max_scale,
+        );
+        if scale_dir != 0 then (
+            let play = if self^.flate_sfx is :Some { sfx, .dir = cur_dir } then (
+                if cur_dir != scale_dir then (
+                    geng.audio.Effect.stop(sfx);
+                    true
+                ) else (
+                    false
+                )
+            ) else true;
+            if play then (
+                let volume = if scale_dir > 0 then 1 else (
+                    (entity^.scale - entity^.min_scale) / (entity^.max_scale - entity^.min_scale)
+                );
+                let sfx = geng.audio.play_with(
+                    if scale_dir > 0 then self^.assets.sfx.inflation else self^.assets.sfx.deflation,
+                    { .volume = volume * 0.3, .@"loop" = false },
+                );
+                self^.flate_sfx = :Some { sfx, .dir = scale_dir };
+            );
+        );
+
+        let max_angular_velocity = 10;
+        let target_angular_velocity = (
+            let w = (
+                let mut w :: Vec3 = { ...Vec2.rotate_90(input.wasd), 0 };
+                if input.shift then (
+                    w = { 0, w.1, -w.0 };
+                );
+                { ...w, 0 }
+            );
+            let mat = match self^.control_mode with (
+                | :RelativeToCamera => Mat4.rotate_z(self^.camera.rotation)
+                | :RelativeToFace => Quat.into_mat4(entity^.rotation)
+            );
+            mat |> Mat4.mul_vec(w)
+                |> Vec4.xyz
+                |> Vec3.mul(max_angular_velocity)
+        );
+        let angular_acceleration = 10;
+        entity^.angular_velocity = Vec3.add(
+            entity^.angular_velocity,
+            Vec3.mul(
+                Vec3.sub(target_angular_velocity, entity^.angular_velocity),
+                min(angular_acceleration * delta_time, 1),
+            ),
+        );
+        entity^.rotation = Quat.add(
+            entity^.rotation,
+            Quat.mul(
+                Quat.mul_quat(
+                    (
+                        let { i, j, k } = entity^.angular_velocity;
+                        { .i, .j, .k, .w = 0 }
+                    ),
+                    entity^.rotation,
+                ),
+                delta_time / 2,
+            )
+        )
+            |> Quat.normalize;
+        match entity^.power with (
+            | :None => ()
+            | :Antigravity _ => ()
+            | :Jetpack ref mut jet => (
+                jet^.active = input.use_power;
+                if jet^.active then (
+                    if jet^.sfx is :None then (
+                        let sfx = geng.audio.play_with(
+                            self^.assets.powers.jetpack.sfx,
+                            { .volume = 0.6, .@"loop" = false },
+                        );
+                        jet^.sfx = :Some sfx;
+                    );
+                ) else (
+                    if jet^.sfx is :Some sfx then (
+                        geng.audio.Effect.stop(sfx);
+                        jet^.sfx = :None;
+                    );
+                );
+            )
+            | :Parachute ref mut par => (
+                par^.active = input.use_power;
+                let target_rotation = Quat.mul_quat(
+                    Quat.from_axis_angle(
+                        { 0, 0, 1 },
+                        entity^.flat_rot,
+                    ),
+                    Quat.from_axis_angle(
+                        { 0, 1, 0 },
+                        Angle.from_degrees(30 * Vec2.length(input.wasd)),
+                    ),
+                );
+                par^.rotation = Quat.normalize(Quat.add(
+                    par^.rotation,
+                    Quat.mul(Quat.sub(target_rotation, par^.rotation), min(1, delta_time / 0.2)),
+                ));
+            )
         );
     );
 );
@@ -86,7 +296,6 @@ const draw_skin = (
 ) => (
     let assets = @current Assets.Ctx;
     let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets.models.skins) - 1);
-    let scale = clamp(scale, .min = MIN_SCALE, .max = MAX_SCALE);
     if jetpack then (
         let angle = Angle.from_degrees(1000 * geng.time_since_start());
         Model.draw(
@@ -101,7 +310,7 @@ const draw_skin = (
         Model.draw(
             assets.models.wormy,
             false,
-            Mat4.translate(Vec3.add(position, { 0, 0, -scale + MIN_SCALE }))
+            Mat4.translate(Vec3.add(position, { 0, 0, -scale + 1 }))
                 |> Mat4.mul_mat(Mat4.rotate_z(flat_rot)),
         );
     );
@@ -116,13 +325,14 @@ const draw_skin = (
     );
     match power with (
         | :None => ()
+        | :Antigravity _ => ()
         | :Jetpack ref jet => (
             Model.draw(
                 assets.powers.jetpack.model,
                 false,
                 Mat4.translate(position)
                     |> Mat4.mul_mat(Quat.into_mat4(rotation))
-                    |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale - MIN_SCALE})),
+                    |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale - 1 })),
             );
         )
         | :Parachute ref par => (
@@ -183,6 +393,7 @@ const Game = newtype {
     .model_renderer :: Model.Renderer,
     .water :: Model.t,
     .player :: Entity,
+    .unicorn :: Entity,
     .other_players :: OrdMap.t[badcop.Id, OtherPlayer],
     .jetpack_enabled :: Bool,
     .cheated :: Bool,
@@ -246,15 +457,38 @@ const respawn_dragon_scales = () => (
     dragon_scales
 );
 
+const reset_unicorn = () -> Entity => (
+    let mut entity = reset_player(.skin = 1, .power = :Antigravity { .active = true });
+    entity.position = { 7.969665, 21.314730, 12.566695 };
+    entity.is_player = false;
+    entity.scale = 3;
+    entity.max_scale = entity.scale;
+    entity.mass = 0.1;
+    entity
+);
+
 const reset_player = (.skin, .power) -> Entity => {
+    .input = {
+        .wasd = { 0, 0 },
+        .space = false,
+        .shift = false,
+        .use_power = false,
+        .jetpack_enabled = false,
+        .control_mode = :RelativeToCamera,
+    },
     .position = { 0, 0, 10 },
     .velocity = { 0, 0, 0 },
+    .is_player = true,
     .rotation = Quat.IDENTITY,
+    .mass = 1,
     .flat_rot = Angle.from_degrees(0),
     .angular_velocity = { 0, 0, 0 },
     .skin,
     .can_jump = false,
     .scale = 1,
+    .min_scale = 1,
+    .max_scale = 2,
+    .scale_speed = 0,
     .power,
 };
 
@@ -284,6 +518,7 @@ const restart = (self :: &mut Game) => (
         .skin = self^.player.skin,
         .power = self^.player.power,
     );
+    self^.unicorn = reset_unicorn();
     self^.timer = :WaitForMove;
     self^.cheated = false;
     self^.jetpack_enabled = false;
@@ -294,24 +529,25 @@ const is_jump_pressed = () => (
     geng.input.Key.is_pressed(:Space) or geng.input.Key.is_pressed(:Backspace)
 );
 
-const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
+const update_step = (self :: &mut Game, entity :: &mut Entity, delta_time :: Float32) => with_return (
     if self^.dead then return;
 
-    match self^.player.power with (
+    match entity^.power with (
         | :None => ()
+        | :Antigravity _ => ()
         | :Jetpack ref mut jet => (
             if jet^.active then (
-                let mat = Quat.into_mat4(self^.player.rotation);
+                let mat = Quat.into_mat4(entity^.rotation);
                 let forward = Mat4.mul_vec(mat, { 1, 0, 0, 0})
                     |> Vec4.xyz;
                 let up = Mat4.mul_vec(mat, { 0, 0, 1, 0})
                     |> Vec4.xyz;
-                self^.player.velocity = Vec3.add(
-                    self^.player.velocity,
+                entity^.velocity = Vec3.add(
+                    entity^.velocity,
                     Vec3.mul(forward, 75 * delta_time),
                 );
-                self^.player.angular_velocity = Vec3.add(
-                    self^.player.angular_velocity,
+                entity^.angular_velocity = Vec3.add(
+                    entity^.angular_velocity,
                     Vec3.mul(
                         Mat4.mul_vec(mat, { 0, 1, 0, 0 })
                             |> Vec4.xyz,
@@ -323,8 +559,8 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
                     jet^.next_particle += 1 / 30;
                     let particle = {
                         .position = Vec3.add(
-                            self^.player.position,
-                            Vec3.mul(up, self^.player.scale + 0.2),
+                            entity^.position,
+                            Vec3.mul(up, entity^.scale + 0.2),
                         ),
                         .texture = self^.assets.powers.jetpack.particle,
                         .t = 0.2,
@@ -339,11 +575,11 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
                     |> Mat4.mul_vec({ 0, 0, 1, 0 })
                     |> Vec4.xyz
                     |> Vec3.normalize;
-                let up_velocity = Vec3.dot(up, self^.player.velocity);
+                let up_velocity = Vec3.dot(up, entity^.velocity);
                 if up_velocity < 0 then (
                     let force = Vec3.mul(up, -up_velocity * 10);
-                    self^.player.velocity = Vec3.add(
-                        self^.player.velocity,
+                    entity^.velocity = Vec3.add(
+                        entity^.velocity,
                         Vec3.mul(force, delta_time),
                     );
                 );
@@ -351,21 +587,21 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
         )
     );
 
-    let old_z = self^.player.position.2;
-    self^.player.position = Vec3.add(
-        self^.player.position,
-        Vec3.mul(self^.player.velocity, delta_time),
+    let old_z = entity^.position.2;
+    entity^.position = Vec3.add(
+        entity^.position,
+        Vec3.mul(entity^.velocity, delta_time),
     );
-    let new_z = self^.player.position.2;
+    let new_z = entity^.position.2;
     if old_z >= 0 and new_z < 0 or old_z < 0 and new_z >= 0 then (
-        let volume = min(abs(self^.player.velocity.2) / player_speed * 2 - 1, 1);
+        let volume = min(abs(entity^.velocity.2) / player_speed * 2 - 1, 1);
         if volume > 0.1 then (
             for (_ :: Int32) in 0..5 do (
                 let deg = std.random.gen_range(.min = 0, .max = 360);
                 let particle = {
                     .position = Vec3.add(
-                        self^.player.position,
-                        { ...Vec2.rotate({ self^.player.scale, 0 }, Angle.from_degrees(deg)), 0 }
+                        entity^.position,
+                        { ...Vec2.rotate({ entity^.scale, 0 }, Angle.from_degrees(deg)), 0 }
                     ),
                     .texture = self^.assets.textures.water_particle,
                     .t = 0,
@@ -379,39 +615,31 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
         );
     );
     let mut max_speed = MAX_SPEED;
-    let scale_dir = if not self^.jetpack_enabled and is_jump_pressed() then (
-        if self^.player.scale < MAX_SCALE then (
-            1
-        ) else 0
-    ) else (
-        if self^.player.scale > MIN_SCALE then (
-            -1
-        ) else 0
-    );
-    let scale_speed = Int32_to_Float32(scale_dir);
-    let scale_time = 0.2;
-    let scale_speed = scale_speed / scale_time;
     for { type_index, level_model } in (
         &self^.assets.models.level
             |> ArrayList.iter
             |> std.iter.enumerate
     ) do (
+        let collision_entity = {
+            .position = &mut entity^.position,
+            .velocity = &mut entity^.velocity,
+            .angular_velocity = &mut entity^.angular_velocity,
+            .radius_change_speed = entity^.scale_speed,
+            .radius = entity^.scale,
+            .inverse_mass = 1,
+        };
         if collisions.collide_and_react(
-            .position = &mut self^.player.position,
-            .velocity = &mut self^.player.velocity,
-            .angular_velocity = &mut self^.player.angular_velocity,
-            .radius_change_speed = scale_speed,
-            .radius = self^.player.scale,
+            collision_entity,
             .mesh = &level_model^.collision_mesh,
             .properties = &level_model^.properties,
         ) is :Some collision then (
-            if type_index == 1 then (
+            if type_index == 1 and entity^.is_player then (
                 self^.dead = true;
                 for (_ :: Int32) in 0..10 do (
                     const rng = () => std.random.gen_range(.min = -0.5, .max = 0.5);
                     let particle = {
                         .position = Vec3.add(
-                            self^.player.position,
+                            entity^.position,
                             { rng(), rng(), rng() },
                         ),
                         .t = 0,
@@ -423,8 +651,8 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
             let volume = min(abs(collision.velocity_along_normal) / 50, 1);
             if volume > 0.1 then (
                 let collision_point = Vec3.sub(
-                    self^.player.position,
-                    Vec3.mul(collision.normal, self^.player.scale),
+                    entity^.position,
+                    Vec3.mul(collision.normal, entity^.scale),
                 );
                 for _ in 0..level_model^.properties.particles do (
                     const rng = () => std.random.gen_range(.min = -0.5, .max = 0.5);
@@ -455,7 +683,7 @@ const update_step = (self :: &mut Game, delta_time :: Float32) => with_return (
             );
         );
     );
-    self^.player.velocity = Vec3.clamp_len(self^.player.velocity, max_speed);
+    entity^.velocity = Vec3.clamp_len(entity^.velocity, max_speed);
 );
 
 const send_update = (self :: &mut Game) => (
@@ -587,6 +815,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .skin = 0,
                     .power = :None,
                 ),
+                .unicorn = reset_unicorn(),
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
                 .fps_counter = FpsCounter.new(),
@@ -680,6 +909,7 @@ const handle_mmo = (self :: &mut Game) => (
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
+            Entity.draw(&self^.unicorn, .jetpack = false);
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
             );
@@ -993,6 +1223,7 @@ const handle_mmo = (self :: &mut Game) => (
                         | :None => return
                         | :Parachute _ => "parachute"
                         | :Jetpack _ => "jetpack"
+                        | :Antigravity _ => "antigravity"
                     );
                     font.Font.draw(
                         &self^.assets.font,
@@ -1182,189 +1413,45 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 self^.player.flat_rot = Angle.add(Vec2.arg(wasd), self^.camera.rotation);
             );
-            if self^.jetpack_enabled then (
-                let target_velocity :: Vec3 = {
-                    ...Vec2.rotate(
-                        Vec2.mul(Vec2.normalize_or_zero(wasd), player_speed),
-                        self^.camera.rotation,
-                    ),
-                    (
-                        let mut z = 0;
-                        if is_jump_pressed() then (
-                            z += 1;
-                        );
-                        if geng.input.Key.is_pressed(:LeftShift) then (
-                            z -= 1;
-                        );
-                        z * player_speed
-                    ),
-                };
-                self^.player.velocity = Vec3.add(
-                    self^.player.velocity,
-                    Vec3.mul(
-                        Vec3.sub(target_velocity, self^.player.velocity),
-                        min(player_acceleration * delta_time, 1),
-                    ),
-                );
-            ) else (
-                if self^.player.position.2 < 0 then (
-                    let water_force = 5;
-                    let target_velocity :: Vec3 = {
-                        ...Vec2.rotate(
-                            Vec2.mul(Vec2.normalize_or_zero(wasd), player_speed),
-                            self^.camera.rotation,
-                        ),
-                        player_speed,
-                    };
-                    self^.player.velocity = Vec3.add(
-                        self^.player.velocity,
-                        Vec3.mul(
-                            Vec3.sub(target_velocity, self^.player.velocity),
-                            min(water_force * delta_time, 1),
-                        ),
-                    );
-                ) else (
-                    let target_velocity :: Vec3 = {
-                        ...Vec2.rotate(
-                            Vec2.mul(Vec2.normalize_or_zero(wasd), player_speed),
-                            self^.camera.rotation,
-                        ),
-                        self^.player.velocity.2,
-                    };
-                    let air_control = 0.5;
-                    self^.player.velocity = Vec3.add(
-                        self^.player.velocity,
-                        Vec3.mul(
-                            Vec3.sub(target_velocity, self^.player.velocity),
-                            min(air_control * delta_time, 1),
-                        ),
-                    );
-                    let gravity = 50;
-                    self^.player.velocity.2 -= gravity * delta_time;
-                );
-            );
-
-            let scale_dir = if not self^.jetpack_enabled and is_jump_pressed() then (
-                if self^.player.scale < MAX_SCALE then (
-                    1
-                ) else 0
-            ) else (
-                if self^.player.scale > MIN_SCALE then (
-                    -1
-                ) else 0
-            );
-            if scale_dir != 0 then (
-                let play = if self^.flate_sfx is :Some { sfx, .dir = cur_dir } then (
-                    if cur_dir != scale_dir then (
-                        geng.audio.Effect.stop(sfx);
-                        true
-                    ) else (
-                        false
-                    )
-                ) else true;
-                if play then (
-                    let volume = if scale_dir > 0 then 1 else (
-                        (self^.player.scale - MIN_SCALE) / (MAX_SCALE - MIN_SCALE)
-                    );
-                    let sfx = geng.audio.play_with(
-                        if scale_dir > 0 then self^.assets.sfx.inflation else self^.assets.sfx.deflation,
-                        { .volume = volume * 0.3, .@"loop" = false },
-                    );
-                    self^.flate_sfx = :Some { sfx, .dir = scale_dir };
-                );
-            );
-            let scale_speed = Int32_to_Float32(scale_dir);
-            let scale_time = 0.2;
-            let scale_speed = scale_speed / scale_time;
-            self^.player.scale = clamp(
-                self^.player.scale + scale_speed * delta_time,
-                .min = MIN_SCALE,
-                .max = MAX_SCALE,
-            );
-
-            let max_angular_velocity = 10;
-            let target_angular_velocity = (
-                let w = (
-                    let mut w :: Vec3 = { ...Vec2.rotate_90(wasd), 0 };
-                    if geng.input.Key.is_pressed(:LeftShift) then (
-                        w = { 0, w.1, -w.0 };
-                    );
-                    { ...w, 0 }
-                );
-                let mat = match self^.control_mode with (
-                    | :RelativeToCamera => Mat4.rotate_z(self^.camera.rotation)
-                    | :RelativeToFace => Quat.into_mat4(self^.player.rotation)
-                );
-                mat |> Mat4.mul_vec(w)
-                    |> Vec4.xyz
-                    |> Vec3.mul(max_angular_velocity)
-            );
-            let angular_acceleration = 10;
-            self^.player.angular_velocity = Vec3.add(
-                self^.player.angular_velocity,
-                Vec3.mul(
-                    Vec3.sub(target_angular_velocity, self^.player.angular_velocity),
-                    min(angular_acceleration * delta_time, 1),
-                ),
-            );
-            self^.player.rotation = Quat.add(
-                self^.player.rotation,
-                Quat.mul(
-                    Quat.mul_quat(
-                        (
-                            let { i, j, k } = self^.player.angular_velocity;
-                            { .i, .j, .k, .w = 0 }
-                        ),
-                        self^.player.rotation,
-                    ),
-                    delta_time / 2,
-                )
-            )
-                |> Quat.normalize;
-            match self^.player.power with (
-                | :None => ()
-                | :Jetpack ref mut jet => (
-                    jet^.active = geng.input.MouseButton.is_pressed(:Right);
-                    if jet^.active then (
-                        if jet^.sfx is :None then (
-                            let sfx = geng.audio.play_with(
-                                self^.assets.powers.jetpack.sfx,
-                                { .volume = 0.6, .@"loop" = false },
-                            );
-                            jet^.sfx = :Some sfx;
-                        );
-                    ) else (
-                        if jet^.sfx is :Some sfx then (
-                            geng.audio.Effect.stop(sfx);
-                            jet^.sfx = :None;
-                        );
-                    );
-                )
-                | :Parachute ref mut par => (
-                    par^.active = geng.input.MouseButton.is_pressed(:Right);
-                    let target_rotation = Quat.mul_quat(
-                        Quat.from_axis_angle(
-                            { 0, 0, 1 },
-                            self^.player.flat_rot,
-                        ),
-                        Quat.from_axis_angle(
-                            { 0, 1, 0 },
-                            Angle.from_degrees(30 * Vec2.length(wasd)),
-                        ),
-                    );
-                    par^.rotation = Quat.normalize(Quat.add(
-                        par^.rotation,
-                        Quat.mul(Quat.sub(target_rotation, par^.rotation), min(1, delta_time / 0.2)),
-                    ));
-                )
-            );
+            let player_input = {
+                .wasd,
+                .space = is_jump_pressed(),
+                .shift = geng.input.Key.is_pressed(:LeftShift),
+                .use_power = geng.input.MouseButton.is_pressed(:Right),
+                .jetpack_enabled = self^.jetpack_enabled,
+                .control_mode = self^.control_mode,
+            };
+            Entity.update_input(self, &mut self^.player, delta_time, player_input);
+            let unicorn_input = {
+                .wasd = { 0, 0 },
+                .space = true,
+                .shift = false,
+                .use_power = true,
+                .jetpack_enabled = false,
+                .control_mode = :RelativeToCamera,
+            };
+            Entity.update_input(self, &mut self^.unicorn, delta_time, unicorn_input);
             self^.next_physics -= delta_time;
             while self^.next_physics < -0.0001 do (
                 const MAX_DISTANCE_A_FRAME = 0.2;
                 let max_delta_time = MAX_DISTANCE_A_FRAME / max(Vec3.length(self^.player.velocity), 0.1);
                 let step = min(max_delta_time, -self^.next_physics);
-                update_step(self, step);
                 self^.next_physics += step;
+                update_step(self, &mut self^.player, step);
+                update_step(self, &mut self^.unicorn, step);
+                let entity = e => {
+                    .position = &mut e^.position,
+                    .velocity = &mut e^.velocity,
+                    .angular_velocity = &mut e^.angular_velocity,
+                    .radius_change_speed = e^.scale_speed,
+                    .radius = e^.scale,
+                    .inverse_mass = 1 / e^.mass,
+                };
+                if collisions.collide_and_react_entities(
+                    entity(&mut self^.player),
+                    entity(&mut self^.unicorn),
+                ) is :Some result then (
+                );
             );
         ),
         .handle_event = (self, event) => (
