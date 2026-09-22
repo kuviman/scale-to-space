@@ -33,9 +33,9 @@ const emote = (index :: Int32) => (
     @native "badcop_emote(\(index))";
 );
 
-const send_unicorn_update = (u :: PlayerData) => (
+const send_beachball_update = (u :: PlayerData) => (
     @native ''
-        badcop_send_unicorn_update((ClientMsgUpdate) {
+        badcop_send_beachball_update((ClientMsgUpdate) {
             .px = \(u.position.0),
             .py = \(u.position.1),
             .pz = \(u.position.2),
@@ -100,7 +100,7 @@ const ServerMessage = newtype (
         .id :: Id,
         .index :: Int32,
     }
-    | :UpdateUnicorn PlayerData
+    | :UpdateBeachball PlayerData
 );
 
 const poll_message = () -> Option.t[ServerMessage] => with_return (
@@ -142,9 +142,9 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
             },
         };
     );
-    if @native "\(tag) == ServerUpdateUnicorn" then (
-        let data :: @opaque_type "ServerMsgUpdateUnicorn*" = @native "\(data)";
-        return :Some :UpdateUnicorn {
+    if @native "\(tag) == ServerUpdateBeachball" then (
+        let data :: @opaque_type "ServerMsgUpdateBeachball*" = @native "\(data)";
+        return :Some :UpdateBeachball {
             .position = {
                 @native "\(data)->stuff.px",
                 @native "\(data)->stuff.py",

@@ -398,14 +398,14 @@ impl FpsCounter as module = (
 );
 
 const Game = newtype {
-    .send_unicorn_update :: Bool,
+    .send_beachball_update :: Bool,
     .fps_counter :: FpsCounter,
     .camera :: geng.Camera,
     .assets :: Assets.t,
     .model_renderer :: Model.Renderer,
     .water :: Model.t,
     .player :: Entity,
-    .unicorn :: Entity,
+    .beachball :: Entity,
     .other_players :: OrdMap.t[badcop.Id, OtherPlayer],
     .jetpack_enabled :: Bool,
     .cheated :: Bool,
@@ -469,7 +469,7 @@ const respawn_dragon_scales = () => (
     dragon_scales
 );
 
-const reset_unicorn = () -> Entity => (
+const reset_beachball = () -> Entity => (
     let mut entity = reset_player(.skin = 1, .power = :Antigravity { .active = true });
     entity.position = { 7.969665, 21.314730, 12.566695 };
     entity.is_player = false;
@@ -530,7 +530,7 @@ const restart = (self :: &mut Game) => (
         .skin = self^.player.skin,
         .power = self^.player.power,
     );
-    self^.unicorn = reset_unicorn();
+    self^.beachball = reset_beachball();
     self^.timer = :WaitForMove;
     self^.cheated = false;
     self^.jetpack_enabled = false;
@@ -709,9 +709,9 @@ const send_update = (self :: &mut Game) => (
         .scale = e^.scale,
     };
     badcop.send_update(make_update(&self^.player));
-    if self^.send_unicorn_update then (
-        badcop.send_unicorn_update(make_update(&self^.unicorn));
-        self^.send_unicorn_update = false;
+    if self^.send_beachball_update then (
+        badcop.send_beachball_update(make_update(&self^.beachball));
+        self^.send_beachball_update = false;
     );
 );
 
@@ -739,11 +739,11 @@ const handle_mmo = (self :: &mut Game) => (
                     |> Option.unwrap;
                 OtherPlayer.update_net(player, data);
             )
-            | :UpdateUnicorn data => (
-                self^.unicorn.position = data.position;
-                self^.unicorn.velocity = data.velocity;
-                self^.unicorn.rotation = data.rotation;
-                self^.unicorn.angular_velocity = data.angular_velocity;
+            | :UpdateBeachball data => (
+                self^.beachball.position = data.position;
+                self^.beachball.velocity = data.velocity;
+                self^.beachball.rotation = data.rotation;
+                self^.beachball.angular_velocity = data.angular_velocity;
             )
             | :PlayerMeta _ => (
             )
@@ -838,7 +838,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .skin = 0,
                     .power = :None,
                 ),
-                .unicorn = reset_unicorn(),
+                .beachball = reset_beachball(),
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
                 .fps_counter = FpsCounter.new(),
@@ -850,7 +850,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .next_physics = 0,
                 .connected = false,
                 .show_timer = true,
-                .send_unicorn_update = false,
+                .send_beachball_update = false,
                 .power_index = 0,
                 .particles = ArrayList.new(),
                 .control_mode = :RelativeToCamera,
@@ -902,8 +902,8 @@ const handle_mmo = (self :: &mut Game) => (
             with Model.PlayerCtx = {
                 .position = self^.player.position,
                 .radius = if self^.dead then 0 else self^.player.scale,
-                .volleyball_position = self^.unicorn.position,
-                .volleyball_radius = self^.unicorn.scale,
+                .volleyball_position = self^.beachball.position,
+                .volleyball_radius = self^.beachball.scale,
             };
             with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                 self^.camera,
@@ -932,15 +932,15 @@ const handle_mmo = (self :: &mut Game) => (
                 with Model.PlayerCtx = {
                     .position = self^.player.position,
                     .radius = 0,
-                    .volleyball_position = self^.unicorn.position,
-                    .volleyball_radius = self^.unicorn.scale,
+                    .volleyball_position = self^.beachball.position,
+                    .volleyball_radius = self^.beachball.scale,
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
             );
-            Entity.draw(&self^.unicorn, .jetpack = false);
+            Entity.draw(&self^.beachball, .jetpack = false);
             Model.draw(self^.water, true, Mat4.IDENTITY);
             for p in &self^.particles |> ArrayList.iter do (
                 draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
@@ -1450,7 +1450,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .control_mode = self^.control_mode,
             };
             Entity.update_input(self, &mut self^.player, delta_time, player_input);
-            let unicorn_input = {
+            let beachball_input = {
                 .wasd = { 0, 0 },
                 .space = true,
                 .shift = false,
@@ -1458,7 +1458,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .jetpack_enabled = false,
                 .control_mode = :RelativeToCamera,
             };
-            Entity.update_input(self, &mut self^.unicorn, delta_time, unicorn_input);
+            Entity.update_input(self, &mut self^.beachball, delta_time, beachball_input);
             self^.next_physics -= delta_time;
             while self^.next_physics < -0.0001 do (
                 const MAX_DISTANCE_A_FRAME = 0.2;
@@ -1466,7 +1466,7 @@ const handle_mmo = (self :: &mut Game) => (
                 let step = min(max_delta_time, -self^.next_physics);
                 self^.next_physics += step;
                 update_step(self, &mut self^.player, step);
-                update_step(self, &mut self^.unicorn, step);
+                update_step(self, &mut self^.beachball, step);
                 let entity = e => {
                     .position = &mut e^.position,
                     .velocity = &mut e^.velocity,
@@ -1477,7 +1477,7 @@ const handle_mmo = (self :: &mut Game) => (
                 };
                 if collisions.collide_and_react_entities(
                     entity(&mut self^.player),
-                    entity(&mut self^.unicorn),
+                    entity(&mut self^.beachball),
                 ) is :Some result then (
                     let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
                     if volume > 0.1 then (
@@ -1486,7 +1486,7 @@ const handle_mmo = (self :: &mut Game) => (
                             { .volume, .@"loop" = false },
                         );
                     );
-                    self^.send_unicorn_update = true;
+                    self^.send_beachball_update = true;
                 );
             );
         ),
@@ -1544,12 +1544,12 @@ const handle_mmo = (self :: &mut Game) => (
                     self^.show_timer = not self^.show_timer;
                 )
                 | :KeyPress :I => (
-                    self^.unicorn.position = Vec3.add(
+                    self^.beachball.position = Vec3.add(
                         self^.player.position,
                         { ...Vec2.rotate({ 5, 0 }, self^.camera.rotation), 10 },
                     );
-                    self^.unicorn.velocity = { 0, 0, 0 };
-                    self^.send_unicorn_update = true;
+                    self^.beachball.velocity = { 0, 0, 0 };
+                    self^.send_beachball_update = true;
                 )
                 | :KeyPress :P => (
                     self^.power_index = (self^.power_index + 1) % 3;

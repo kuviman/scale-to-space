@@ -244,14 +244,14 @@ int main(int argc, char *argv[])
                     }
                     break;
                   }
-                  case ClientUpdateUnicorn: {
+                  case ClientUpdateBeachball: {
                     ClientMsgUpdate* msg;
                     if (msg = has_full_message(user, sizeof(ClientMsgUpdate), &looping)) {
                         struct __attribute__((packed)) {
                           ServerMsgTag tag;
-                          ServerMsgUpdateUnicorn data;
+                          ServerMsgUpdateBeachball data;
                         } server_msg = {
-                          .tag = ServerUpdateUnicorn,
+                          .tag = ServerUpdateBeachball,
                           .data.stuff = *msg,
                         };
                         broadcast((const uint8_t*)&server_msg, sizeof(server_msg), pdata[user->pidx].meta.id);

@@ -1,6 +1,6 @@
 typedef enum ServerMsgTag {
   ServerUpdatePlayer,
-  ServerUpdateUnicorn,
+  ServerUpdateBeachball,
   ServerConnected,
   ServerDisconnected,
   ServerPlayerMeta,
@@ -9,7 +9,7 @@ typedef enum ServerMsgTag {
 
 typedef enum ClientMsgTag {
   ClientUpdate,
-  ClientUpdateUnicorn,
+  ClientUpdateBeachball,
   ClientBeatGame,
   ClientSetName,
   ClientEmote
@@ -75,4 +75,4 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
   ClientMsgUpdate stuff;
-} ServerMsgUpdateUnicorn;
+} ServerMsgUpdateBeachball;

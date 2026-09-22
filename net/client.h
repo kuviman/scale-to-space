@@ -63,11 +63,11 @@ void *has_full_message(size_t n) {
   return ret;
 }
 
-TcsResult badcop_send_unicorn_update(ClientMsgUpdate update) {
+TcsResult badcop_send_beachball_update(ClientMsgUpdate update) {
   struct __attribute__((packed)) {
     ClientMsgTag tag;
     ClientMsgUpdate data;
-  } msg = {.tag = ClientUpdateUnicorn, .data = update};
+  } msg = {.tag = ClientUpdateBeachball, .data = update};
   TcsResult res = tcs_send(client_socket, (const uint8_t *)&msg, sizeof(msg),
                            TCS_MSG_SENDALL, NULL);
   if (res != TCS_SUCCESS) {
@@ -208,8 +208,8 @@ void *badcop_poll_msg() {
       if (msg = has_full_message(sizeof(ServerMsgUpdatePlayer)))
         return msg;
       break;
-    case ServerUpdateUnicorn:
-      if (msg = has_full_message(sizeof(ServerMsgUpdateUnicorn)))
+    case ServerUpdateBeachball:
+      if (msg = has_full_message(sizeof(ServerMsgUpdateBeachball)))
         return msg;
       break;
     case ServerConnected:
