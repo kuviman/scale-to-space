@@ -244,6 +244,20 @@ int main(int argc, char *argv[])
                     }
                     break;
                   }
+                  case ClientUpdateUnicorn: {
+                    ClientMsgUpdate* msg;
+                    if (msg = has_full_message(user, sizeof(ClientMsgUpdate), &looping)) {
+                        struct __attribute__((packed)) {
+                          ServerMsgTag tag;
+                          ServerMsgUpdateUnicorn data;
+                        } server_msg = {
+                          .tag = ServerUpdateUnicorn,
+                          .data.stuff = *msg,
+                        };
+                        broadcast((const uint8_t*)&server_msg, sizeof(server_msg), pdata[user->pidx].meta.id);
+                    }
+                    break;
+                  }
                   case ClientUpdate: {
                     ClientMsgUpdate* msg;
                     if (msg = has_full_message(user, sizeof(ClientMsgUpdate), &looping)) {

@@ -33,6 +33,30 @@ const emote = (index :: Int32) => (
     @native "badcop_emote(\(index))";
 );
 
+const send_unicorn_update = (u :: PlayerData) => (
+    @native ''
+        badcop_send_unicorn_update((ClientMsgUpdate) {
+            .px = \(u.position.0),
+            .py = \(u.position.1),
+            .pz = \(u.position.2),
+            .vx = \(u.velocity.0),
+            .vy = \(u.velocity.1),
+            .vz = \(u.velocity.2),
+            .rx = \(u.rotation.i),
+            .ry = \(u.rotation.j),
+            .rz = \(u.rotation.k),
+            .rw = \(u.rotation.w),
+            .angular_vel = {
+                .x = \(u.angular_velocity.0),
+                .y = \(u.angular_velocity.1),
+                .z = \(u.angular_velocity.2),
+            },
+            .skin = \(u.skin),
+            .scale = \(u.scale),
+            .jetpack = \(if u.jetpack then 1 else 0),
+        })
+    '';
+);
 const send_update = (u :: PlayerData) => (
     @native ''
         badcop_send_update((ClientMsgUpdate) {
@@ -76,6 +100,7 @@ const ServerMessage = newtype (
         .id :: Id,
         .index :: Int32,
     }
+    | :UpdateUnicorn PlayerData
 );
 
 const poll_message = () -> Option.t[ServerMessage] => with_return (
@@ -115,6 +140,35 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
                 .scale = @native "\(data)->stuff.scale",
                 .jetpack = @native "\(data)->stuff.jetpack != 0",
             },
+        };
+    );
+    if @native "\(tag) == ServerUpdateUnicorn" then (
+        let data :: @opaque_type "ServerMsgUpdateUnicorn*" = @native "\(data)";
+        return :Some :UpdateUnicorn {
+            .position = {
+                @native "\(data)->stuff.px",
+                @native "\(data)->stuff.py",
+                @native "\(data)->stuff.pz",
+            },
+            .velocity = {
+                @native "\(data)->stuff.vx",
+                @native "\(data)->stuff.vy",
+                @native "\(data)->stuff.vz",
+            },
+            .rotation = {
+                .i = @native "\(data)->stuff.rx",
+                .j = @native "\(data)->stuff.ry",
+                .k = @native "\(data)->stuff.rz",
+                .w = @native "\(data)->stuff.rw",
+            },
+            .angular_velocity = {
+                @native "\(data)->stuff.angular_vel.x",
+                @native "\(data)->stuff.angular_vel.y",
+                @native "\(data)->stuff.angular_vel.z",
+            },
+            .skin = @native "\(data)->stuff.skin",
+            .scale = @native "\(data)->stuff.scale",
+            .jetpack = @native "\(data)->stuff.jetpack != 0",
         };
     );
     if @native "\(tag) == ServerConnected" then (

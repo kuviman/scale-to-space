@@ -393,6 +393,7 @@ impl FpsCounter as module = (
 );
 
 const Game = newtype {
+    .send_unicorn_update :: Bool,
     .fps_counter :: FpsCounter,
     .camera :: geng.Camera,
     .assets :: Assets.t,
@@ -693,15 +694,20 @@ const update_step = (self :: &mut Game, entity :: &mut Entity, delta_time :: Flo
 );
 
 const send_update = (self :: &mut Game) => (
-    badcop.send_update({
-        .position = self^.player.position,
-        .velocity = self^.player.velocity,
-        .rotation = self^.player.rotation,
-        .angular_velocity = self^.player.angular_velocity,
-        .skin = self^.player.skin,
+    let make_update = e => {
+        .position = e^.position,
+        .velocity = e^.velocity,
+        .rotation = e^.rotation,
+        .angular_velocity = e^.angular_velocity,
+        .skin = e^.skin,
         .jetpack = self^.jetpack_enabled,
-        .scale = self^.player.scale,
-    });
+        .scale = e^.scale,
+    };
+    badcop.send_update(make_update(&self^.player));
+    if self^.send_unicorn_update then (
+        badcop.send_unicorn_update(make_update(&self^.unicorn));
+        self^.send_unicorn_update = false;
+    );
 );
 
 const handle_mmo = (self :: &mut Game) => (
@@ -727,6 +733,12 @@ const handle_mmo = (self :: &mut Game) => (
                     |> OrdMap.get_mut(id)
                     |> Option.unwrap;
                 OtherPlayer.update_net(player, data);
+            )
+            | :UpdateUnicorn data => (
+                self^.unicorn.position = data.position;
+                self^.unicorn.velocity = data.velocity;
+                self^.unicorn.rotation = data.rotation;
+                self^.unicorn.angular_velocity = data.angular_velocity;
             )
             | :PlayerMeta _ => (
             )
@@ -833,6 +845,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .next_physics = 0,
                 .connected = false,
                 .show_timer = true,
+                .send_unicorn_update = false,
                 .power_index = 0,
                 .particles = ArrayList.new(),
                 .control_mode = :RelativeToCamera,
@@ -1457,6 +1470,7 @@ const handle_mmo = (self :: &mut Game) => (
                     entity(&mut self^.player),
                     entity(&mut self^.unicorn),
                 ) is :Some result then (
+                    self^.send_unicorn_update = true;
                 );
             );
         ),
