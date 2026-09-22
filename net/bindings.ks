@@ -112,6 +112,23 @@ const ServerMessage = newtype (
         .index :: Int32,
     }
     | :UpdateBeachball PlayerData
+    | :Meta ServerMeta
+);
+
+const ServerMeta = newtype {
+    .score :: { Int32, Int32 },
+};
+
+impl ServerMeta as module = (
+    module:
+
+    const default = () -> ServerMeta => {
+        .score = { 0, 0 },
+    };
+);
+
+const reset_beachball_score = () => (
+    @native "badcop_reset_beachball_score()";
 );
 
 const poll_message = () -> Option.t[ServerMessage] => with_return (
@@ -187,6 +204,15 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
     if @native "\(tag) == ServerConnected" then (
         let data :: @opaque_type "ServerMsgConnected*" = @native "\(data)";
         return :Some :Connected (@native "\(data)->id");
+    );
+    if @native "\(tag) == ServerMeta" then (
+        let data :: @opaque_type "ServerMsgMeta*" = @native "\(data)";
+        return :Some :Meta {
+            .score = {
+                @native "\(data)->score[0]",
+                @native "\(data)->score[1]",
+            },
+        };
     );
     if @native "\(tag) == ServerDisconnected" then (
         let data :: @opaque_type "ServerMsgDisconnected*" = @native "\(data)";

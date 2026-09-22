@@ -23,6 +23,7 @@ typedef struct PlayerData {
   TcsSocket socket;
 } PlayerData;
 
+ServerMsgMeta meta = {.score = {0, 0}};
 PlayerData pdata[MAX_CONNECTIONS] = {};
 
 #ifdef DEBUG
@@ -43,6 +44,17 @@ void broadcast(const uint8_t *msg, size_t msg_size, unsigned long long ignore) {
       LOG_DEBUG("Sending broadcast to %llu\n", pdata[i].meta.id);
     }
   }
+}
+
+void broadcast_meta() {
+  struct __attribute__((packed)) {
+    ServerMsgTag tag;
+    ServerMsgMeta data;
+  } msg = {
+      .tag = ServerMeta,
+      .data = meta,
+  };
+  broadcast((const uint8_t *)&msg, sizeof(msg), UINT64_MAX);
 }
 
 void disconnect(struct TcsPoll *poll, TcsSocket socket, UserData *user_data) {
@@ -78,6 +90,7 @@ int main(int argc, char *argv[]) {
 
   TcsSocket listen_socket = TCS_SOCKET_INVALID;
 
+  printf("Starting server on %s\n", argv[1]);
   if (tcs_socket_tcp_str(&listen_socket, argv[1], NULL, 0) != TCS_SUCCESS)
     return show_error("Could not create server socket");
 
@@ -143,6 +156,7 @@ int main(int argc, char *argv[]) {
                    }};
           tcs_send(child_socket, (const uint8_t *)&msg, sizeof(msg),
                    TCS_MSG_SENDALL, NULL);
+          broadcast_meta();
         }
         {
           struct __attribute__((packed)) {
@@ -274,9 +288,18 @@ int main(int argc, char *argv[]) {
                 };
                 broadcast((const uint8_t *)&server_msg, sizeof(server_msg),
                           UINT64_MAX);
+                meta.score[(*who > 0) ? 0 : 1]++;
+                printf("new score: %d:%d\n", meta.score[0], meta.score[1]);
+                broadcast_meta();
               }
             }
             break;
+          }
+          case ClientResetBeachballScore: {
+            if (has_full_message(user, 0, &looping)) {
+              memset(&meta.score, 0, sizeof(meta.score));
+              broadcast_meta();
+            }
           }
           case ClientUpdateBeachball: {
             ClientMsgUpdate *msg;

@@ -428,7 +428,7 @@ impl FpsCounter as module = (
 );
 
 const BeachballScoringState = newtype (
-    | :CanScore { .serving_side :: Int32 }
+    | :CanScore { .last_touched_side :: Int32 }
     | :WaitingToCrossTheNet { .serving_side :: Int32 }
 );
 
@@ -441,6 +441,7 @@ const Beachball = newtype {
 };
 
 const Game = newtype {
+    .server_meta :: badcop.ServerMeta,
     .send_beachball_update :: Bool,
     .fps_counter :: FpsCounter,
     .camera :: geng.Camera,
@@ -701,10 +702,10 @@ const update_step = (
             .properties = &level_model^.properties,
         ) is :Some collision then (
             if type_index == 4 and score_beachball then (
-                if self^.beachball.scoring is :CanScore { .serving_side } then (
+                if self^.beachball.scoring is :CanScore { .last_touched_side } then (
                     self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = 0 };
                     let side = beachball_side(entity^.position);
-                    let who_scored = if side == 0 then -serving_side else -side;
+                    let who_scored = if side == 0 then -last_touched_side else -side;
                     badcop.send_beachball_scored(who_scored);
                 );
             );
@@ -796,6 +797,9 @@ const handle_mmo = (self :: &mut Game) => (
             | :Disconnected id => (
                 print("Player disconnected: " + to_string(id));
                 &mut self^.other_players |> OrdMap.remove(id);
+            )
+            | :Meta meta => (
+                self^.server_meta = meta;
             )
             | :BeachballScored { .who } => (
                 geng.audio.play(self^.assets.sfx.score);
@@ -918,6 +922,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .beachball = reset_beachball(),
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
+                .server_meta = badcop.ServerMeta.default(),
                 .fps_counter = FpsCounter.new(),
                 .cheated = false,
                 .flate_sfx = :None,
@@ -1239,6 +1244,15 @@ const handle_mmo = (self :: &mut Game) => (
                     .align = 0.5,
                 );
             );
+            font.Font.draw(
+                &self^.assets.font,
+                to_string(self^.server_meta.score.0) + ":" + to_string(self^.server_meta.score.1),
+                .matrix = Mat4.translate({ 59.892914, 5.753887, 34.534351 })
+                    |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)))
+                    |> Mat4.mul_mat(Mat4.scale_uniform(5)),
+                .color = { 0, 0, 0, 1 },
+                .align = 0.5,
+            );
 
             with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                 {
@@ -1553,7 +1567,7 @@ const handle_mmo = (self :: &mut Game) => (
                         if serving_side == 0 then (
                             self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = side };
                         ) else if serving_side != side then (
-                            self^.beachball.scoring = :CanScore { .serving_side };
+                            self^.beachball.scoring = :CanScore { .last_touched_side = serving_side };
                         );
                     );
                     update_step(self, &mut self^.beachball.new, step, .score_beachball = true);
@@ -1597,6 +1611,9 @@ const handle_mmo = (self :: &mut Game) => (
                     entity(&mut self^.player),
                     entity(&mut self^.beachball.current),
                 ) is :Some result then (
+                    if self^.beachball.scoring is :CanScore { .last_touched_side = ref mut last_touched_side } then (
+                        last_touched_side^ = if self^.beachball.current.position.0 < 57.597553 then 1 else -1;
+                    );
                     let vertical = true;
                     # if self^.player.power is :BeachballVertical { .active } then active else false;
                     if vertical then (
@@ -1675,6 +1692,9 @@ const handle_mmo = (self :: &mut Game) => (
                 )
                 | :KeyPress :H => (
                     self^.show_timer = not self^.show_timer;
+                )
+                | :KeyPress :Digit0 => (
+                    badcop.reset_beachball_score();
                 )
                 | :KeyPress :I => (
                     let mut e = self^.beachball.current;

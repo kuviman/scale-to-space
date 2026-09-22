@@ -137,6 +137,20 @@ TcsResult badcop_set_name(const char *name) {
   return res;
 }
 
+TcsResult badcop_reset_beachball_score() {
+  struct __attribute__((packed)) {
+    ClientMsgTag tag;
+  } msg = {
+      .tag = ClientResetBeachballScore,
+  };
+  TcsResult res = tcs_send(client_socket, (const uint8_t *)&msg, sizeof(msg),
+                           TCS_MSG_SENDALL, NULL);
+  if (res != TCS_SUCCESS) {
+    _set_connected(0);
+  }
+  return res;
+}
+
 TcsResult badcop_beat_game(unsigned long long duration) {
   struct __attribute__((packed)) {
     ClientMsgTag tag;
@@ -238,6 +252,10 @@ void *badcop_poll_msg() {
       break;
     case ServerDisconnected:
       if (msg = has_full_message(sizeof(ServerMsgDisconnected)))
+        return msg;
+      break;
+    case ServerMeta:
+      if (msg = has_full_message(sizeof(ServerMsgMeta)))
         return msg;
       break;
     default:
