@@ -281,7 +281,7 @@ const collide_and_react_entities = (a :: Entity, b :: Entity) -> Option.t[Collis
     if penetration > 0 then (
         let normal = delta_pos |> Vec3.normalize_or_zero;
         let properties = &{
-            .bounciness = 1,
+            .bounciness = 2.5,
             .friction = 0.0,
             .animated = false,
             .particles = 0,
