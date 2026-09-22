@@ -29,6 +29,15 @@ const Power = newtype (
     }
 );
 
+const beachball_side = (pos :: Vec3) -> Int32 => (
+    if (
+        25.617508 < pos.0 and pos.0 < 88.994545 and
+        -60.444721 < pos.1 and pos.1 < -17.170897
+    ) then (
+        if pos.0 < 57.597553 then 1 else -1
+    ) else 0
+);
+
 const Entity = newtype {
     .skin :: Int32,
     .position :: Vec3,
@@ -418,11 +427,17 @@ impl FpsCounter as module = (
     );
 );
 
+const BeachballScoringState = newtype (
+    | :CanScore { .serving_side :: Int32 }
+    | :WaitingToCrossTheNet { .serving_side :: Int32 }
+);
+
 const Beachball = newtype {
     .old :: Entity,
     .current :: Entity,
     .new :: Entity,
     .lerp :: Float32,
+    .scoring :: BeachballScoringState,
 };
 
 const Game = newtype {
@@ -508,6 +523,7 @@ const reset_beachball = () -> Beachball => (
         .old = entity,
         .current = entity,
         .new = entity,
+        .scoring = :WaitingToCrossTheNet { .serving_side = 0 },
         .lerp = 1,
     }
 );
@@ -574,7 +590,12 @@ const is_jump_pressed = () => (
     geng.input.Key.is_pressed(:Space) or geng.input.Key.is_pressed(:Backspace)
 );
 
-const update_step = (self :: &mut Game, entity :: &mut Entity, delta_time :: Float32) => with_return (
+const update_step = (
+    self :: &mut Game,
+    entity :: &mut Entity,
+    delta_time :: Float32,
+    .score_beachball :: Bool,
+) => with_return (
     if self^.dead then return;
 
     match entity^.power with (
@@ -679,6 +700,14 @@ const update_step = (self :: &mut Game, entity :: &mut Entity, delta_time :: Flo
             .mesh = &level_model^.collision_mesh,
             .properties = &level_model^.properties,
         ) is :Some collision then (
+            if type_index == 4 and score_beachball then (
+                if self^.beachball.scoring is :CanScore { .serving_side } then (
+                    self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = 0 };
+                    let side = beachball_side(entity^.position);
+                    let who_scored = if side == 0 then -serving_side else -side;
+                    badcop.send_beachball_scored(who_scored);
+                );
+            );
             if type_index == 1 and entity^.is_player then (
                 self^.dead = true;
                 for (_ :: Int32) in 0..10 do (
@@ -741,6 +770,7 @@ const send_update = (self :: &mut Game) => (
         .skin = e^.skin,
         .jetpack = self^.jetpack_enabled,
         .scale = e^.scale,
+        .distance_to_beachball = Vec3.length(Vec3.sub(self^.beachball.current.position, e^.position)),
     };
     badcop.send_update(make_update(&self^.player));
     if self^.send_beachball_update then (
@@ -767,6 +797,9 @@ const handle_mmo = (self :: &mut Game) => (
                 print("Player disconnected: " + to_string(id));
                 &mut self^.other_players |> OrdMap.remove(id);
             )
+            | :BeachballScored { .who } => (
+                geng.audio.play(self^.assets.sfx.score);
+            )
             | :UpdatePlayer { .id, .data } => (
                 let player = &mut self^.other_players
                     |> OrdMap.get_mut(id)
@@ -785,6 +818,7 @@ const handle_mmo = (self :: &mut Game) => (
                         e.angular_velocity = data.angular_velocity;
                         e
                     ),
+                    .scoring = self^.beachball.scoring,
                     .lerp = 0,
                 };
             )
@@ -1510,9 +1544,20 @@ const handle_mmo = (self :: &mut Game) => (
                 let max_delta_time = MAX_DISTANCE_A_FRAME / max(Vec3.length(self^.player.velocity), 0.1);
                 let step = min(max_delta_time, -self^.next_physics);
                 self^.next_physics += step;
-                update_step(self, &mut self^.player, step);
-                update_step(self, &mut self^.beachball.old, step);
-                update_step(self, &mut self^.beachball.new, step);
+                update_step(self, &mut self^.player, step, .score_beachball = false);
+                update_step(self, &mut self^.beachball.old, step, .score_beachball = false);
+                (
+                    let pos = self^.beachball.current.position;
+                    let side = beachball_side(pos);
+                    if self^.beachball.scoring is :WaitingToCrossTheNet { .serving_side } then (
+                        if serving_side == 0 then (
+                            self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = side };
+                        ) else if serving_side != side then (
+                            self^.beachball.scoring = :CanScore { .serving_side };
+                        );
+                    );
+                    update_step(self, &mut self^.beachball.new, step, .score_beachball = true);
+                );
                 self^.beachball.current = (
                     self^.beachball.lerp = min(1, self^.beachball.lerp + step / 0.3);
                     let k_old = 1 - self^.beachball.lerp;
@@ -1564,6 +1609,7 @@ const handle_mmo = (self :: &mut Game) => (
                         .old = self^.beachball.current,
                         .current = self^.beachball.current,
                         .new = self^.beachball.current,
+                        .scoring = self^.beachball.scoring,
                         .lerp = 1,
                     };
                     let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
@@ -1643,6 +1689,7 @@ const handle_mmo = (self :: &mut Game) => (
                         .old = e,
                         .current = e,
                         .new = e,
+                        .scoring = :WaitingToCrossTheNet { .serving_side = 0 },
                         .lerp = 1,
                     };
                     self^.send_beachball_update = true;

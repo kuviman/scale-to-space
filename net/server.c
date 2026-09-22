@@ -244,6 +244,32 @@ int main(int argc, char *argv[])
                     }
                     break;
                   }
+                  case ClientBeachballScored: {
+                    int* who;
+                    if (who = has_full_message(user, sizeof(int), &looping)) {
+                        float this_distance = pdata[user->pidx].data.distance_to_beachball;
+                        bool is_closest = true;
+                        for(size_t j = 0; j < MAX_CONNECTIONS; ++j) {
+                          if (!pdata[j].is_valid) continue;
+                          if (pdata[j].meta.id == user->id) continue;
+                          if (pdata[j].data.distance_to_beachball < this_distance) {
+                              is_closest = false;
+                              break;
+                          }
+                        }
+                        if (is_closest) {
+                            struct __attribute__((packed)) {
+                              ServerMsgTag tag;
+                              int who;
+                            } server_msg = {
+                              .tag = ServerBeachballScored,
+                              .who = *who,
+                            };
+                            broadcast((const uint8_t*)&server_msg, sizeof(server_msg), UINT64_MAX);
+                        }
+                    }
+                    break;
+                  }
                   case ClientUpdateBeachball: {
                     ClientMsgUpdate* msg;
                     if (msg = has_full_message(user, sizeof(ClientMsgUpdate), &looping)) {

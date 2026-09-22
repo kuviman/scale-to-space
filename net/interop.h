@@ -4,12 +4,14 @@ typedef enum ServerMsgTag {
   ServerConnected,
   ServerDisconnected,
   ServerPlayerMeta,
-  ServerEmote
+  ServerEmote,
+  ServerBeachballScored
 } ServerMsgTag;
 
 typedef enum ClientMsgTag {
   ClientUpdate,
   ClientUpdateBeachball,
+  ClientBeachballScored,
   ClientBeatGame,
   ClientSetName,
   ClientEmote
@@ -47,6 +49,7 @@ typedef struct __attribute__((packed)) {
   int skin;
   int jetpack;
   float scale;
+  float distance_to_beachball;
 } ClientMsgUpdate;
 
 typedef struct __attribute__((packed)) {

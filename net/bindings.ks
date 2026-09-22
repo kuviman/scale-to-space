@@ -15,6 +15,7 @@ const PlayerData = newtype {
     .skin :: Int32,
     .jetpack :: Bool,
     .scale :: Float32,
+    .distance_to_beachball :: Float32,
 };
 
 const set_name = (name :: String) => (
@@ -54,9 +55,15 @@ const send_beachball_update = (u :: PlayerData) => (
             .skin = \(u.skin),
             .scale = \(u.scale),
             .jetpack = \(if u.jetpack then 1 else 0),
+            .distance_to_beachball = \(u.distance_to_beachball),
         })
     '';
 );
+
+const send_beachball_scored = (who :: Int32) => (
+    @native "badcop_send_beachball_scored(\(who))";
+);
+
 const send_update = (u :: PlayerData) => (
     @native ''
         badcop_send_update((ClientMsgUpdate) {
@@ -78,6 +85,7 @@ const send_update = (u :: PlayerData) => (
             .skin = \(u.skin),
             .scale = \(u.scale),
             .jetpack = \(if u.jetpack then 1 else 0),
+            .distance_to_beachball = \(u.distance_to_beachball),
         })
     '';
 );
@@ -87,6 +95,9 @@ const Id = Int64;
 const ServerMessage = newtype (
     | :Connected Id
     | :Disconnected Id
+    | :BeachballScored {
+        .who :: Int32,
+    }
     | :UpdatePlayer {
         .id :: Id,
         .data :: PlayerData,
@@ -139,6 +150,7 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
                 .skin = @native "\(data)->stuff.skin",
                 .scale = @native "\(data)->stuff.scale",
                 .jetpack = @native "\(data)->stuff.jetpack != 0",
+                .distance_to_beachball = @native "\(data)->stuff.distance_to_beachball",
             },
         };
     );
@@ -169,6 +181,7 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
             .skin = @native "\(data)->stuff.skin",
             .scale = @native "\(data)->stuff.scale",
             .jetpack = @native "\(data)->stuff.jetpack != 0",
+            .distance_to_beachball = @native "\(data)->stuff.distance_to_beachball",
         };
     );
     if @native "\(tag) == ServerConnected" then (
@@ -178,6 +191,12 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
     if @native "\(tag) == ServerDisconnected" then (
         let data :: @opaque_type "ServerMsgDisconnected*" = @native "\(data)";
         return :Some :Disconnected (@native "\(data)->id");
+    );
+    if @native "\(tag) == ServerBeachballScored" then (
+        let data :: @opaque_type "int*" = @native "\(data)";
+        return :Some :BeachballScored {
+            .who = @native "*\(data)"
+        };
     );
     if @native "\(tag) == ServerPlayerMeta" then (
         let data :: @opaque_type "ServerMsgPlayerMeta*" = @native "\(data)";

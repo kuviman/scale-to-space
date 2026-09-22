@@ -63,6 +63,18 @@ void *has_full_message(size_t n) {
   return ret;
 }
 
+TcsResult badcop_send_beachball_scored(int who) {
+  struct __attribute__((packed)) {
+    ClientMsgTag tag;
+    int data;
+  } msg = {.tag = ClientBeachballScored, .data = who};
+  TcsResult res = tcs_send(client_socket, (const uint8_t *)&msg, sizeof(msg),
+                           TCS_MSG_SENDALL, NULL);
+  if (res != TCS_SUCCESS) {
+    _set_connected(0);
+  }
+  return res;
+}
 TcsResult badcop_send_beachball_update(ClientMsgUpdate update) {
   struct __attribute__((packed)) {
     ClientMsgTag tag;
@@ -218,6 +230,10 @@ void *badcop_poll_msg() {
       break;
     case ServerPlayerMeta:
       if (msg = has_full_message(sizeof(ServerMsgPlayerMeta)))
+        return msg;
+      break;
+    case ServerBeachballScored:
+      if (msg = has_full_message(sizeof(int)))
         return msg;
       break;
     case ServerDisconnected:
