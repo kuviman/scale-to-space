@@ -229,6 +229,7 @@ const Assets = (
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/trampoline"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/mushroom"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rocket"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/net"));
                 list
             ),
             .level_nocollisions = (
