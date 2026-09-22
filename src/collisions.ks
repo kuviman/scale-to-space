@@ -209,6 +209,7 @@ const do_react_entities = (
     b :: Entity,
     collision :: Collision,
     .properties :: &MeshProperties,
+    .friction_into_linear :: Float32,
 ) -> CollisionResult => (
     let bounciness = properties^.bounciness;
     let jump_modifier = 4;
@@ -261,6 +262,14 @@ const do_react_entities = (
         relative_angular_velocity,
         -min(friction, max(0, -bounce_rel_vel) * friction),
     );
+    (
+        # TODO this is a hack for beachball
+        let ka = 1;
+        let kb = 1;
+        a.angular_velocity^ = Vec3.add(a.angular_velocity^, Vec3.mul(angular_impulse, ka));
+        b.angular_velocity^ = Vec3.add(b.angular_velocity^, Vec3.mul(angular_impulse, kb));
+    );
+    let angular_impulse = Vec3.mul(angular_impulse, friction_into_linear);
     a.velocity^ = Vec3.sub(
         a.velocity^,
         Vec3.mul(Vec3.cross(angular_impulse, collision.normal), ka),
@@ -269,8 +278,6 @@ const do_react_entities = (
         b.velocity^,
         Vec3.mul(Vec3.cross(angular_impulse, collision.normal), kb),
     );
-    a.angular_velocity^ = Vec3.add(a.angular_velocity^, Vec3.mul(angular_impulse, ka));
-    b.angular_velocity^ = Vec3.add(b.angular_velocity^, Vec3.mul(angular_impulse, kb));
     { .velocity_along_normal, .normal = collision.normal }
 );
 
@@ -281,14 +288,20 @@ const collide_and_react_entities = (a :: Entity, b :: Entity) -> Option.t[Collis
     if penetration > 0 then (
         let normal = delta_pos |> Vec3.normalize_or_zero;
         let properties = &{
-            .bounciness = 2.5,
-            .friction = 0.0,
+            .bounciness = 2,
+            .friction = 1,
             .animated = false,
             .particles = 0,
             .particle_t = 0,
             .particle_spread = 0,
         };
-        :Some do_react_entities(a, b, { .normal, .penetration }, .properties)
+        :Some do_react_entities(
+            a,
+            b,
+            { .normal, .penetration },
+            .properties,
+            .friction_into_linear = 0,
+        )
     ) else :None
 );
 
@@ -306,7 +319,13 @@ const collide_and_react = (
             .radius = 0,
             .inverse_mass = 0,
         };
-        :Some do_react_entities(entity, mesh_entity, collision, .properties)
+        :Some do_react_entities(
+            entity,
+            mesh_entity,
+            collision,
+            .properties,
+            .friction_into_linear = 1,
+        )
     ) else (
         :None
     )

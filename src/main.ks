@@ -21,6 +21,9 @@ const Power = newtype (
         .next_particle :: Float32,
         .sfx :: Option.t[geng.audio.Effect],
     }
+    | :BeachballVertical {
+        .active :: Bool,
+    }
     | :Antigravity {
         .active :: Bool,
     }
@@ -237,7 +240,12 @@ impl Entity as module = (
             |> Quat.normalize;
         match entity^.power with (
             | :None => ()
-            | :Antigravity _ => ()
+            | :Antigravity ref mut power => (
+                power^.active = input.use_power;
+            )
+            | :BeachballVertical ref mut power => (
+                power^.active = input.use_power;
+            )
             | :Jetpack ref mut jet => (
                 jet^.active = input.use_power;
                 if jet^.active then (
@@ -322,21 +330,34 @@ const draw_skin = (
         );
     );
     if not jetpack or skin != 5 then (
-        Model.draw(
-            if volley then (
-                assets.volleyball
-            ) else (
-                assets.models.skins.[skin]
-            ),
-            false,
-            Mat4.translate(position)
-                |> Mat4.mul_mat(Mat4.scale_uniform(scale))
-                |> Mat4.mul_mat(Quat.into_mat4(rotation)),
+        let matrix = Mat4.translate(position)
+            |> Mat4.mul_mat(Mat4.scale_uniform(scale))
+            |> Mat4.mul_mat(Quat.into_mat4(rotation));
+        if volley then (
+            @native "glCullFace(GL_FRONT)";
+            Model.draw(
+                assets.volleyball,
+                false,
+                matrix,
+            );
+            @native "glCullFace(GL_BACK)";
+            Model.draw(
+                assets.volleyball,
+                false,
+                matrix,
+            );
+        ) else (
+            Model.draw(
+                assets.models.skins.[skin],
+                false,
+                matrix,
+            );
         );
     );
     match power with (
         | :None => ()
         | :Antigravity _ => ()
+        | :BeachballVertical _ => ()
         | :Jetpack ref jet => (
             Model.draw(
                 assets.powers.jetpack.model,
@@ -397,6 +418,13 @@ impl FpsCounter as module = (
     );
 );
 
+const Beachball = newtype {
+    .old :: Entity,
+    .current :: Entity,
+    .new :: Entity,
+    .lerp :: Float32,
+};
+
 const Game = newtype {
     .send_beachball_update :: Bool,
     .fps_counter :: FpsCounter,
@@ -405,7 +433,7 @@ const Game = newtype {
     .model_renderer :: Model.Renderer,
     .water :: Model.t,
     .player :: Entity,
-    .beachball :: Entity,
+    .beachball :: Beachball,
     .other_players :: OrdMap.t[badcop.Id, OtherPlayer],
     .jetpack_enabled :: Bool,
     .cheated :: Bool,
@@ -469,14 +497,19 @@ const respawn_dragon_scales = () => (
     dragon_scales
 );
 
-const reset_beachball = () -> Entity => (
+const reset_beachball = () -> Beachball => (
     let mut entity = reset_player(.skin = 1, .power = :Antigravity { .active = true });
     entity.position = { 7.969665, 21.314730, 12.566695 };
     entity.is_player = false;
     entity.scale = 3;
     entity.max_scale = entity.scale;
-    entity.mass = 0.01;
-    entity
+    entity.mass = 0.1;
+    {
+        .old = entity,
+        .current = entity,
+        .new = entity,
+        .lerp = 1,
+    }
 );
 
 const reset_player = (.skin, .power) -> Entity => {
@@ -547,6 +580,7 @@ const update_step = (self :: &mut Game, entity :: &mut Entity, delta_time :: Flo
     match entity^.power with (
         | :None => ()
         | :Antigravity _ => ()
+        | :BeachballVertical _ => ()
         | :Jetpack ref mut jet => (
             if jet^.active then (
                 let mat = Quat.into_mat4(entity^.rotation);
@@ -710,7 +744,7 @@ const send_update = (self :: &mut Game) => (
     };
     badcop.send_update(make_update(&self^.player));
     if self^.send_beachball_update then (
-        badcop.send_beachball_update(make_update(&self^.beachball));
+        badcop.send_beachball_update(make_update(&self^.beachball.current));
         self^.send_beachball_update = false;
     );
 );
@@ -740,10 +774,19 @@ const handle_mmo = (self :: &mut Game) => (
                 OtherPlayer.update_net(player, data);
             )
             | :UpdateBeachball data => (
-                self^.beachball.position = data.position;
-                self^.beachball.velocity = data.velocity;
-                self^.beachball.rotation = data.rotation;
-                self^.beachball.angular_velocity = data.angular_velocity;
+                self^.beachball = {
+                    .old = self^.beachball.current,
+                    .current = self^.beachball.current,
+                    .new = (
+                        let mut e = self^.beachball.new;
+                        e.position = data.position;
+                        e.velocity = data.velocity;
+                        e.rotation = data.rotation;
+                        e.angular_velocity = data.angular_velocity;
+                        e
+                    ),
+                    .lerp = 0,
+                };
             )
             | :PlayerMeta _ => (
             )
@@ -902,8 +945,8 @@ const handle_mmo = (self :: &mut Game) => (
             with Model.PlayerCtx = {
                 .position = self^.player.position,
                 .radius = if self^.dead then 0 else self^.player.scale,
-                .volleyball_position = self^.beachball.position,
-                .volleyball_radius = self^.beachball.scale,
+                .volleyball_position = self^.beachball.current.position,
+                .volleyball_radius = self^.beachball.current.scale,
             };
             with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                 self^.camera,
@@ -932,15 +975,15 @@ const handle_mmo = (self :: &mut Game) => (
                 with Model.PlayerCtx = {
                     .position = self^.player.position,
                     .radius = 0,
-                    .volleyball_position = self^.beachball.position,
-                    .volleyball_radius = self^.beachball.scale,
+                    .volleyball_position = self^.beachball.current.position,
+                    .volleyball_radius = self^.beachball.current.scale,
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
             );
-            Entity.draw(&self^.beachball, .jetpack = false);
+            Entity.draw(&self^.beachball.current, .jetpack = false);
             Model.draw(self^.water, true, Mat4.IDENTITY);
             for p in &self^.particles |> ArrayList.iter do (
                 draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
@@ -1252,6 +1295,7 @@ const handle_mmo = (self :: &mut Game) => (
                         | :Parachute _ => "parachute"
                         | :Jetpack _ => "jetpack"
                         | :Antigravity _ => "antigravity"
+                        | :BeachballVertical _ => "beachball vertical hit"
                     );
                     font.Font.draw(
                         &self^.assets.font,
@@ -1458,7 +1502,8 @@ const handle_mmo = (self :: &mut Game) => (
                 .jetpack_enabled = false,
                 .control_mode = :RelativeToCamera,
             };
-            Entity.update_input(self, &mut self^.beachball, delta_time, beachball_input);
+            Entity.update_input(self, &mut self^.beachball.old, delta_time, beachball_input);
+            Entity.update_input(self, &mut self^.beachball.new, delta_time, beachball_input);
             self^.next_physics -= delta_time;
             while self^.next_physics < -0.0001 do (
                 const MAX_DISTANCE_A_FRAME = 0.2;
@@ -1466,7 +1511,35 @@ const handle_mmo = (self :: &mut Game) => (
                 let step = min(max_delta_time, -self^.next_physics);
                 self^.next_physics += step;
                 update_step(self, &mut self^.player, step);
-                update_step(self, &mut self^.beachball, step);
+                update_step(self, &mut self^.beachball.old, step);
+                update_step(self, &mut self^.beachball.new, step);
+                self^.beachball.current = (
+                    self^.beachball.lerp = min(1, self^.beachball.lerp + step / 0.3);
+                    let k_old = 1 - self^.beachball.lerp;
+                    let k_new = self^.beachball.lerp;
+                    let old = &self^.beachball.old;
+                    let new = &self^.beachball.new;
+                    {
+                        ...self^.beachball.current,
+                        .position = Vec3.add(
+                            Vec3.mul(old^.position, k_old),
+                            Vec3.mul(new^.position, k_new),
+                        ),
+                        .velocity = Vec3.add(
+                            Vec3.mul(old^.velocity, k_old),
+                            Vec3.mul(new^.velocity, k_new),
+                        ),
+                        .angular_velocity = Vec3.add(
+                            Vec3.mul(old^.angular_velocity, k_old),
+                            Vec3.mul(new^.angular_velocity, k_new),
+                        ),
+                        .rotation = Quat.add(
+                            Quat.mul(old^.rotation, k_old),
+                            Quat.mul(new^.rotation, k_new),
+                        )
+                            |> Quat.normalize,
+                    }
+                );
                 let entity = e => {
                     .position = &mut e^.position,
                     .velocity = &mut e^.velocity,
@@ -1477,8 +1550,22 @@ const handle_mmo = (self :: &mut Game) => (
                 };
                 if collisions.collide_and_react_entities(
                     entity(&mut self^.player),
-                    entity(&mut self^.beachball),
+                    entity(&mut self^.beachball.current),
                 ) is :Some result then (
+                    let vertical = true;
+                    # if self^.player.power is :BeachballVertical { .active } then active else false;
+                    if vertical then (
+                        self^.beachball.current.velocity.2 += 30 * min(
+                            abs(result.velocity_along_normal) / player_speed,
+                            1,
+                        );
+                    );
+                    self^.beachball = {
+                        .old = self^.beachball.current,
+                        .current = self^.beachball.current,
+                        .new = self^.beachball.current,
+                        .lerp = 1,
+                    };
                     let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
                     if volume > 0.1 then (
                         geng.audio.play_with(
@@ -1544,11 +1631,20 @@ const handle_mmo = (self :: &mut Game) => (
                     self^.show_timer = not self^.show_timer;
                 )
                 | :KeyPress :I => (
-                    self^.beachball.position = Vec3.add(
+                    let mut e = self^.beachball.current;
+                    e.position = Vec3.add(
                         self^.player.position,
                         { ...Vec2.rotate({ 5, 0 }, self^.camera.rotation), 10 },
                     );
-                    self^.beachball.velocity = { 0, 0, 0 };
+                    e.velocity = { 0, 0, 0 };
+                    e.rotation = Quat.IDENTITY;
+                    e.angular_velocity = { 0, 0, 0 };
+                    self^.beachball = {
+                        .old = e,
+                        .current = e,
+                        .new = e,
+                        .lerp = 1,
+                    };
                     self^.send_beachball_update = true;
                 )
                 | :KeyPress :P => (
@@ -1566,6 +1662,8 @@ const handle_mmo = (self :: &mut Game) => (
                             .next_particle = 0,
                             .sfx = :None,
                         };
+                    ) else if self^.power_index == 3 then (
+                        self^.player.power = :BeachballVertical { .active = false };
                     ) else panic("TOO BIG POWER INDEX");
                 )
                 | :MousePress _ => (
