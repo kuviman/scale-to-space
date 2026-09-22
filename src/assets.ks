@@ -242,6 +242,8 @@ const Assets = (
                     "assets/models/level/nocollisions/flag"));
                 &mut list |> ArrayList.push_back(Model.load(
                     "assets/models/level/nocollisions/secret"));
+                &mut list |> ArrayList.push_back(Model.load(
+                    "assets/models/level/nocollisions/playground"));
                 list
             ),
             .jetpack = Model.load("assets/models/jetpack"),

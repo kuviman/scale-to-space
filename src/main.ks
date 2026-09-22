@@ -148,6 +148,11 @@ impl Entity as module = (
                         entity^.velocity,
                         Vec3.mul(entity^.velocity, min(1, delta_time * damp)),
                     );
+                    let damp_z = 2;
+                    entity^.velocity = Vec3.sub(
+                        entity^.velocity,
+                        Vec3.mul({ 0, 0, min(0, entity^.velocity.2) }, min(1, delta_time * damp_z)),
+                    );
                 );
             );
         );
