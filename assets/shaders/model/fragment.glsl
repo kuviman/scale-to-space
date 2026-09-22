@@ -24,7 +24,7 @@ void main() {
     float hightlight = 0.0;
     float shadow_d = length(u_volleyball_pos.xy - v_world_pos.xy);
     if (u_volleyball_pos.z > v_world_pos.z && shadow_d < u_volleyball_radius && v_normal.z > 0.05) {
-        light_k -= 0.3;
+        light_k -= 0.1;
     }
     if (u_player_radius > 0.1) {
         shadow_d = length(u_player_pos.xy - v_world_pos.xy);

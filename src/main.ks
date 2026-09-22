@@ -932,10 +932,10 @@ const handle_mmo = (self :: &mut Game) => (
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
-            Entity.draw(&self^.unicorn, .jetpack = false);
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
             );
+            Entity.draw(&self^.unicorn, .jetpack = false);
             Model.draw(self^.water, true, Mat4.IDENTITY);
             for p in &self^.particles |> ArrayList.iter do (
                 draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
