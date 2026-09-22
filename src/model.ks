@@ -13,6 +13,8 @@ const Model = (
     const PlayerCtx = @context newtype {
         .position :: Vec3,
         .radius :: Float32,
+        .volleyball_position :: Vec3,
+        .volleyball_radius :: Float32,
     };
 
     const load = (path :: String) -> Model.t => (
@@ -107,13 +109,25 @@ const Model = (
                 (@current PlayerCtx).position,
                 draw_state
             );
-        ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_player_radius",
                 (@current PlayerCtx).radius,
                 draw_state
             );
+        program
+            |> ugli.set_uniform(
+                "u_volleyball_pos",
+                (@current PlayerCtx).volleyball_position,
+                draw_state
+            );
+        program
+            |> ugli.set_uniform(
+                "u_volleyball_radius",
+                (@current PlayerCtx).volleyball_radius,
+                draw_state
+            );
+        ugli.check_error();
         ugli.check_error();
         program |> ugli.set_vertex_data_source(model.buffer);
         ugli.check_error();

@@ -9,6 +9,9 @@ uniform sampler2D u_texture;
 uniform vec3 u_player_pos;
 uniform float u_player_radius;
 
+uniform vec3 u_volleyball_pos;
+uniform float u_volleyball_radius;
+
 vec4 lerp(vec4 a, vec4 b, float t) {
     return a * (1.0 - t) + b * t;
 }
@@ -19,8 +22,12 @@ void main() {
     float ambient_light = 0.8;
     light_k = ambient_light + light_k * (1.0 - ambient_light);
     float hightlight = 0.0;
+    float shadow_d = length(u_volleyball_pos.xy - v_world_pos.xy);
+    if (u_volleyball_pos.z > v_world_pos.z && shadow_d < u_volleyball_radius && v_normal.z > 0.05) {
+        light_k -= 0.3;
+    }
     if (u_player_radius > 0.1) {
-        float shadow_d = length(u_player_pos.xy - v_world_pos.xy);
+        shadow_d = length(u_player_pos.xy - v_world_pos.xy);
         if (u_player_pos.z > v_world_pos.z && shadow_d < u_player_radius) {
             light_k -= 0.3;
         }

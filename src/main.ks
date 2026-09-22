@@ -140,10 +140,10 @@ impl Entity as module = (
                     ),
                 );
                 let antigravity = if entity^.power is :Antigravity { .active, ... } then active else false;
-                let gravity = if antigravity then 20 else 50;
+                let gravity = if antigravity then 30 else 50;
                 entity^.velocity.2 -= gravity * delta_time;
                 if antigravity then (
-                    let damp = 0.10;
+                    let damp = 0.50;
                     entity^.velocity = Vec3.sub(
                         entity^.velocity,
                         Vec3.mul(entity^.velocity, min(1, delta_time * damp)),
@@ -470,7 +470,7 @@ const reset_unicorn = () -> Entity => (
     entity.is_player = false;
     entity.scale = 3;
     entity.max_scale = entity.scale;
-    entity.mass = 0.3;
+    entity.mass = 0.01;
     entity
 );
 
@@ -897,6 +897,8 @@ const handle_mmo = (self :: &mut Game) => (
             with Model.PlayerCtx = {
                 .position = self^.player.position,
                 .radius = if self^.dead then 0 else self^.player.scale,
+                .volleyball_position = self^.unicorn.position,
+                .volleyball_radius = self^.unicorn.scale,
             };
             with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                 self^.camera,
@@ -925,6 +927,8 @@ const handle_mmo = (self :: &mut Game) => (
                 with Model.PlayerCtx = {
                     .position = self^.player.position,
                     .radius = 0,
+                    .volleyball_position = self^.unicorn.position,
+                    .volleyball_radius = self^.unicorn.scale,
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
@@ -1470,6 +1474,13 @@ const handle_mmo = (self :: &mut Game) => (
                     entity(&mut self^.player),
                     entity(&mut self^.unicorn),
                 ) is :Some result then (
+                    let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
+                    if volume > 0.1 then (
+                        geng.audio.play_with(
+                            self^.assets.sfx.volleyball,
+                            { .volume, .@"loop" = false },
+                        );
+                    );
                     self^.send_unicorn_update = true;
                 );
             );
