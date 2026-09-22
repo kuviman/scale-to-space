@@ -1543,6 +1543,14 @@ const handle_mmo = (self :: &mut Game) => (
                 | :KeyPress :H => (
                     self^.show_timer = not self^.show_timer;
                 )
+                | :KeyPress :I => (
+                    self^.unicorn.position = Vec3.add(
+                        self^.player.position,
+                        { ...Vec2.rotate({ 5, 0 }, self^.camera.rotation), 10 },
+                    );
+                    self^.unicorn.velocity = { 0, 0, 0 };
+                    self^.send_unicorn_update = true;
+                )
                 | :KeyPress :P => (
                     self^.power_index = (self^.power_index + 1) % 3;
                     if self^.power_index == 0 then (
