@@ -140,10 +140,10 @@ impl Entity as module = (
                     ),
                 );
                 let antigravity = if entity^.power is :Antigravity { .active, ... } then active else false;
-                let gravity = if antigravity then 5 else 50;
+                let gravity = if antigravity then 20 else 50;
                 entity^.velocity.2 -= gravity * delta_time;
                 if antigravity then (
-                    let damp = 0.30;
+                    let damp = 0.10;
                     entity^.velocity = Vec3.sub(
                         entity^.velocity,
                         Vec3.mul(entity^.velocity, min(1, delta_time * damp)),
@@ -470,7 +470,7 @@ const reset_unicorn = () -> Entity => (
     entity.is_player = false;
     entity.scale = 3;
     entity.max_scale = entity.scale;
-    entity.mass = 0.1;
+    entity.mass = 0.3;
     entity
 );
 
