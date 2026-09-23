@@ -100,22 +100,26 @@ impl Entity as module = (
     ) => (
         entity^.input = input;
         if input.jetpack_enabled then (
-            let target_velocity :: Vec3 = {
-                ...Vec2.rotate(
-                    Vec2.mul(Vec2.normalize_or_zero(input.wasd), player_speed),
-                    self^.camera.rotation,
-                ),
-                (
-                    let mut z = 0;
-                    if input.space then (
-                        z += 1;
-                    );
-                    if input.shift then (
-                        z -= 1;
-                    );
-                    z * player_speed
-                ),
-            };
+            const CHEAT_MOVE_SPEED :: Float32 = 100;
+            let target_velocity :: Vec3 = Vec3.mul(
+                {
+                    ...Vec2.rotate(
+                        Vec2.normalize_or_zero(input.wasd),
+                        self^.camera.rotation,
+                    ),
+                    (
+                        let mut z = 0;
+                        if input.space then (
+                            z += 1;
+                        );
+                        if input.shift then (
+                            z -= 1;
+                        );
+                        z
+                    ),
+                },
+                CHEAT_MOVE_SPEED,
+            );
             entity^.velocity = Vec3.add(
                 entity^.velocity,
                 Vec3.mul(
