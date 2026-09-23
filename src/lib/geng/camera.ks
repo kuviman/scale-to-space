@@ -29,7 +29,7 @@ impl CameraUniforms as module = (
             |> Mat4.mul_mat(Mat4.rotate_z(Angle.sub(Angle.from_degrees(90), camera.rotation)))
             |> Mat4.mul_mat(Mat4.translate(Vec3.neg(camera.position)));
         let aspect = framebuffer_size.0 / framebuffer_size.1;
-        let projection_matrix = Mat4.perspective(camera.fov, aspect, 1, 500);
+        let projection_matrix = Mat4.perspective(camera.fov, aspect, 1, 5000);
         {
             .view_matrix,
             .projection_matrix,
