@@ -7,6 +7,8 @@ const badcop = import "../net/bindings.ks";
 const collisions = import "./collisions.ks";
 
 const FINISH :: Vec3 = { -120.198761, -1.251943, 147.323959 };
+# TODO IDK why but with const :: Float32 it thinks its Float64???
+const BEACHBALL_NET_X = `(-68.147575);
 
 module:
 
@@ -29,12 +31,15 @@ const Power = newtype (
     }
 );
 
+# { -112.411026, -195.230301, 8.988006 }
+# { -68.147575, -223.581848, 24.811840 }
+# { -23.389166, -251.719894, 8.988012 }
 const beachball_side = (pos :: Vec3) -> Int32 => (
     if (
-        25.617508 < pos.0 and pos.0 < 88.994545 and
-        -60.444721 < pos.1 and pos.1 < -17.170897
+        -112.411026 < pos.0 and pos.0 < -23.389166 and
+        -251.719894 < pos.1 and pos.1 < -195.230301
     ) then (
-        if pos.0 < 57.597553 then 1 else -1
+        if pos.0 < (include_ast BEACHBALL_NET_X) then 1 else -1
     ) else 0
 );
 
@@ -515,7 +520,7 @@ const respawn_dragon_scales = () => (
 
 const reset_beachball = () -> Beachball => (
     let mut entity = reset_player(.skin = 1, .power = :Antigravity { .active = true });
-    entity.position = { 7.969665, 21.314730, 12.566695 };
+    entity.position = { -47.435856, -224.922592, 20.447927 };
     entity.is_player = false;
     entity.scale = 3;
     entity.max_scale = entity.scale;
@@ -1247,7 +1252,7 @@ const handle_mmo = (self :: &mut Game) => (
             font.Font.draw(
                 &self^.assets.font,
                 to_string(self^.server_meta.score.0) + ":" + to_string(self^.server_meta.score.1),
-                .matrix = Mat4.translate({ 59.892914, 5.753887, 34.534351 })
+                .matrix = Mat4.translate({ -67.035286, -176.572922, 30.826015 })
                     |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)))
                     |> Mat4.mul_mat(Mat4.scale_uniform(5)),
                 .color = { 0, 0, 0, 1 },
@@ -1612,7 +1617,7 @@ const handle_mmo = (self :: &mut Game) => (
                     entity(&mut self^.beachball.current),
                 ) is :Some result then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side = ref mut last_touched_side } then (
-                        last_touched_side^ = if self^.beachball.current.position.0 < 57.597553 then 1 else -1;
+                        last_touched_side^ = if self^.beachball.current.position.0 < (include_ast BEACHBALL_NET_X) then 1 else -1;
                     );
                     let vertical = true;
                     # if self^.player.power is :BeachballVertical { .active } then active else false;
