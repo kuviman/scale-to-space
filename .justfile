@@ -78,9 +78,9 @@ build src="src/main.ks":
     just build-c {{src}}
     just build-native
 
-run:
+run *args:
     LSAN_OPTIONS='suppresions=suppr.txt' \
-        ./target/compiled/main.exe --connect 15.204.212.176:5555 --vsync false
+        ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
     # ./target/compiled/main.exe --server 127.0.0.1:1235 --connect 127.0.0.1:1235
 
 run-and-profile:

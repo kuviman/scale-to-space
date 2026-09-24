@@ -43,12 +43,12 @@ void main() {
     vec4 light_color = vec4(vec3(light_k), 1.0);
     gl_FragColor = texture2D(u_texture, v_uv) * light_color;
     gl_FragColor = lerp(gl_FragColor, vec4(1.0), hightlight);
-    if (false) {
+    if (true) {
         // fog
         gl_FragColor = lerp(
             gl_FragColor,
             vec4(0.8, 0.8, 1.0, 1.0),
-            pow(clamp(-v_camera_pos.z / 200.0, 0.0, 1.0), 2.0)
+            1.0 - pow(0.9, -v_camera_pos.z / 50.0)
         );
     }
     if (gl_FragColor.a < 0.1) {
