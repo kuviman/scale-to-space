@@ -474,6 +474,7 @@ const Game = newtype {
     .sens :: Float32,
     .power_index :: Int32,
     .control_mode :: ControlMode,
+    .music_volume :: Float32,
 };
 
 const ControlMode = newtype (
@@ -939,6 +940,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .show_timer = true,
                 .send_beachball_update = false,
                 .power_index = 0,
+                .music_volume = 1,
                 .particles = ArrayList.new(),
                 .control_mode = :RelativeToCamera,
                 .next_fire_particle = 0,
@@ -1445,7 +1447,7 @@ const handle_mmo = (self :: &mut Game) => (
                         .max = max_delta,
                     )
                 )
-                    * MUSIC_VOLUME,
+                    * MUSIC_VOLUME * self^.music_volume,
             );
             geng.audio.Effect.set_volume(
                 self^.assets.music_high,
@@ -1460,7 +1462,7 @@ const handle_mmo = (self :: &mut Game) => (
                         .max = max_delta,
                     )
                 )
-                    * MUSIC_VOLUME,
+                    * MUSIC_VOLUME * self^.music_volume,
             );
             for &mut { .key = _, .value = ref mut o } in &mut self^.other_players |> OrdMap.iter_mut do (
                 OtherPlayer.update(o, delta_time);
@@ -1702,6 +1704,9 @@ const handle_mmo = (self :: &mut Game) => (
                 )
                 | :KeyPress :Digit0 => (
                     badcop.reset_beachball_score();
+                )
+                | :KeyPress :M => (
+                    self^.music_volume = 1 - self^.music_volume;
                 )
                 | :KeyPress :I => (
                     let mut e = self^.beachball.current;
