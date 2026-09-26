@@ -1575,7 +1575,7 @@ const handle_mmo = (self :: &mut Game) => (
                     if self^.beachball.scoring is :WaitingToCrossTheNet { .serving_side } then (
                         if serving_side == 0 then (
                             self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = side };
-                        ) else if serving_side != side then (
+                        ) else if side != 0 and serving_side != side then (
                             self^.beachball.scoring = :CanScore { .last_touched_side = serving_side };
                         );
                     );
