@@ -1501,7 +1501,7 @@ const handle_mmo = (self :: &mut Game) => (
                 time^ += delta_time;
             );
             handle_mmo(self);
-            geng.audio.Effect.set_volume(self^.jetpack_sfx, if self^.jetpack_enabled then 0.5 else 0);
+            geng.audio.Effect.set_volume(self^.jetpack_sfx, if self^.jetpack_enabled and self^.draw_player then 0.5 else 0);
             if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < self^.player.scale then (
                 if self^.timer is :Working t then (
                     geng.audio.play(self^.assets.sfx.win);
