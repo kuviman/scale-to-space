@@ -446,6 +446,7 @@ const Beachball = newtype {
 };
 
 const Game = newtype {
+    .draw_player :: Bool,
     .server_meta :: badcop.ServerMeta,
     .send_beachball_update :: Bool,
     .fps_counter :: FpsCounter,
@@ -929,6 +930,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .other_players = OrdMap.new(),
                 .jetpack_enabled = false,
                 .server_meta = badcop.ServerMeta.default(),
+                .draw_player = true,
                 .fps_counter = FpsCounter.new(),
                 .cheated = false,
                 .flate_sfx = :None,
@@ -1024,7 +1026,9 @@ const handle_mmo = (self :: &mut Game) => (
                     .volleyball_position = self^.beachball.current.position,
                     .volleyball_radius = self^.beachball.current.scale,
                 };
-                Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
+                if self^.draw_player then (
+                    Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
+                );
             );
             for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
                 OtherPlayer.draw(other_player);
@@ -1707,6 +1711,9 @@ const handle_mmo = (self :: &mut Game) => (
                 )
                 | :KeyPress :M => (
                     self^.music_volume = 1 - self^.music_volume;
+                )
+                | :KeyPress :L => (
+                    self^.draw_player = not self^.draw_player;
                 )
                 | :KeyPress :I => (
                     let mut e = self^.beachball.current;
