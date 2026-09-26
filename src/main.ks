@@ -922,7 +922,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .model_renderer = Model.Renderer.init(),
                 .player = reset_player(
                     .skin = 0,
-                    .power = :None,
+                    .power = :Parachute { .active = false, .rotation = Quat.IDENTITY },
                 ),
                 .beachball = reset_beachball(),
                 .other_players = OrdMap.new(),
@@ -1185,18 +1185,20 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
-                    "P to cycle POSTJAM power",
-                    .matrix = Mat4.rotate_z(Angle.from_degrees(10))
-                        |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 4}))
-                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
-                    .color = { 0, 0, 0, 1 },
-                    .align = 0.5,
+                if false then (
+                    font.Font.draw(
+                        &self^.assets.font,
+                        "P to cycle POSTJAM power",
+                        .matrix = Mat4.rotate_z(Angle.from_degrees(10))
+                            |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 4}))
+                            |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
+                        .color = { 0, 0, 0, 1 },
+                        .align = 0.5,
+                    );
                 );
                 font.Font.draw(
                     &self^.assets.font,
-                    "RMB to use POSTJAM power",
+                    "RMB to use parachute (postjam)",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 3}))
                         |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90))),
@@ -1719,7 +1721,7 @@ const handle_mmo = (self :: &mut Game) => (
                     };
                     self^.send_beachball_update = true;
                 )
-                | :KeyPress :P => (
+                | :KeyPress :P => if false then (
                     self^.power_index = (self^.power_index + 1) % 3;
                     if self^.power_index == 0 then (
                         self^.player.power = :None;
@@ -1737,6 +1739,9 @@ const handle_mmo = (self :: &mut Game) => (
                     ) else if self^.power_index == 3 then (
                         self^.player.power = :BeachballVertical { .active = false };
                     ) else panic("TOO BIG POWER INDEX");
+                )
+                | :KeyPress :Enter => (
+                    geng.toggle_fullscreen();
                 )
                 | :MousePress _ => (
                     SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);
