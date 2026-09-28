@@ -5,3 +5,5 @@
 *.exe
 *.dll
 perf*
+*.blend[0-9]*
+*.blend~
