@@ -81,7 +81,7 @@ const get_shader_parameter_int = (
 const get_shader_info_log = (shader :: Shader) -> String => (
     let ctx = (@current Context);
     let buf_size = get_shader_parameter_int(shader, @native "GL_INFO_LOG_LENGTH");
-    let buf :: @opaque_type "char*" = @native "Kast_allocate_array(&Byte_TypeInfo, \(buf_size))";
+    let buf :: @opaque_type "char*" = @native "Kast_allocate_raw(\(buf_size))";
     let mut length :: GLsizei = 0;
     @native "glGetShaderInfoLog(\(shader), \(buf_size), \(&mut length), \(buf))";
     @native "(String) { .buf = \(buf), .length = \(length) }"
@@ -134,7 +134,7 @@ const get_program_parameter_int = (
 const get_program_info_log = (program :: Program) -> String => (
     let ctx = (@current Context);
     let buf_size = get_program_parameter_int(program, @native "GL_INFO_LOG_LENGTH");
-    let buf :: @opaque_type "char*" = @native "Kast_allocate_array(&Byte_TypeInfo, \(buf_size))";
+    let buf :: @opaque_type "char*" = @native "Kast_allocate_raw(\(buf_size))";
     let mut length :: GLsizei = 0;
     @native "glGetProgramInfoLog(\(program), \(buf_size), \(&mut length), \(buf))";
     @native "(String) { .buf = \(buf), .length = \(length) }"
@@ -165,7 +165,7 @@ const get_active_impl = (
     | target.name == "interpreter" => `(
         let ctx = (@current Context);
         let name_buf_size :: GLsizei = 100; # TODO
-        let name_buf :: @opaque_type "GLchar*" = @native "Kast_allocate_array(&Byte_TypeInfo, \(name_buf_size))";
+        let name_buf :: @opaque_type "GLchar*" = @native "Kast_allocate_raw(\(name_buf_size))";
         let mut name_length :: GLsizei = 0;
         let mut size :: GLint = 0;
         let mut @"type" :: GLenum = 0;
