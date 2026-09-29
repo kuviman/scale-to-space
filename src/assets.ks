@@ -56,7 +56,6 @@ const Assets = (
         .fullscreen :: ugli.Texture,
         .mute :: ugli.Texture,
         .muted :: ugli.Texture,
-        .ground :: ugli.Texture,
         .water :: ugli.Texture,
         .fire :: ugli.Texture,
         .water_particle :: ugli.Texture,
@@ -159,16 +158,11 @@ const Assets = (
         let load_texture = path => geng.load_texture("assets/textures/" + path, :Nearest);
 
         let textures = {
-            .fullscreen = load_texture("fullscreen.png"),
-            .mute = load_texture("mute.png"),
-            .muted = load_texture("muted.png"),
-            .ground = (
-                let mut texture = geng.load_texture("assets/textures/ground.png", :Nearest);
-                &mut texture |> ugli.Texture.set_wrap(:Repeat);
-                texture
-            ),
+            .fullscreen = load_texture("ui/fullscreen.png"),
+            .mute = load_texture("ui/mute.png"),
+            .muted = load_texture("ui/muted.png"),
             .water = (
-                let mut texture = geng.load_texture("assets/textures/water.png", :Nearest);
+                let mut texture = geng.load_texture("assets/textures/surfaces/water.png", :Nearest);
                 &mut texture |> ugli.Texture.set_wrap(:Repeat);
                 texture
             ),
