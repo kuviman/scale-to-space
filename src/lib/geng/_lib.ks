@@ -245,6 +245,7 @@ const run = [G :: Type] () => (
             :Continue
         ),
         .quit = (mut self, result) => (
+            @native "Kast_dump_allocation_stats()";
             let self = &mut self;
             with geng.Context = self^.geng_ctx;
             with gl.Context = self^.geng_ctx.gl_context;
