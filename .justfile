@@ -4,6 +4,7 @@ default:
 build-c source="src/main.ks":
     ${KASTC:-kastc} compile \
         --target c \
+        --typed-gc false \
         --output target/compiled/main.c \
         {{source}}
 
