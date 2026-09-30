@@ -149,11 +149,11 @@
         "opam-repository": "opam-repository"
       },
       "locked": {
-        "lastModified": 1790676103,
-        "narHash": "sha256-vUf2/jGq0I0glA0Fum69mxcGBF0PARQTt0D4iStke14=",
+        "lastModified": 1790744013,
+        "narHash": "sha256-Pna3F/tKMF11XCwkIkDfhcQJBVjg0j+LzB5Gm126LTE=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "1ead721e047b841052a51b259b34fb518ace101f",
+        "rev": "037c7900264bf6a17ad6e854c6970266d9e6aa69",
         "type": "github"
       },
       "original": {
