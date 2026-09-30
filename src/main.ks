@@ -1784,6 +1784,7 @@ if args.server is :Some address then (
     );
 );
 );
+@native "GC_enable_incremental()";
 if args.connect is :Some address then (
     badcop.init(address);
     badcop.set_name("<todo name>");
