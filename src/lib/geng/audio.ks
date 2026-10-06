@@ -81,7 +81,7 @@ const Buffer = newtype {
     .audio :: SDL.MIX.Audio,
 };
 
-const load = (path) -> Buffer => (
+const load = (path :: &str) -> Buffer => (
     let ctx = (@current Context);
     let audio = SDL.MIX.LoadAudio(ctx.mixer, path, true);
     { .audio }

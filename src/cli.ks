@@ -9,7 +9,7 @@ const Args = newtype {
 };
 
 const default_address = std.sys.get_env("SERVER_ADDRESS")
-    |> Option.unwrap_or("127.0.0.1:1234");
+    |> Option.unwrap_or(String.from_str("127.0.0.1:1234"));
 
 const parse = () -> Args => with_return (
     let mut result :: Args = {
@@ -26,13 +26,13 @@ const parse = () -> Args => with_return (
         let arg = std.sys.argv_at(i);
         if arg == "--server" then (
             let address = std.sys.argv_at(i + 1);
-            result.server = :Some address;
+            result.server = :Some String.from_str(address);
             i += 2;
             continue;
         );
         if arg == "--connect" then (
             let address = std.sys.argv_at(i + 1);
-            result.connect = :Some address;
+            result.connect = :Some String.from_str(address);
             i += 2;
             continue;
         );
@@ -48,9 +48,9 @@ const parse = () -> Args => with_return (
             i += 2;
             continue;
         );
-        panic("Unexpected arg " + arg);
+        panic_fmt!("Unexpected arg \(arg)");
     );
-    if { result.server, result.connect } is { :None, :None } then (
+    if { &result.server, &result.connect } is { &(:None), &(:None) } then (
         result.connect = :Some default_address;
     );
     result

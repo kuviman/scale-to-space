@@ -17,9 +17,9 @@ const Model = (
         .volleyball_radius :: Float32,
     };
 
-    const load = (path :: String) -> Model.t => (
-        let text = std.fs.read_file(path + "/model.obj");
-        let faces = obj.parse(text);
+    const load = (path :: &str) -> Model.t => (
+        let text = std.fs.read_file(&format!("\(path)/model.obj") |> as_str);
+        let faces = obj.parse(&text |> as_str);
         let mut data = ArrayList.new();
         for face in faces |> ArrayList.into_iter do (
             &mut data |> ArrayList.push_back(face.0);
@@ -27,7 +27,10 @@ const Model = (
             &mut data |> ArrayList.push_back(face.2);
         );
         let buffer = ugli.VertexBuffer.init(&data);
-        let mut texture = ugli.Texture.load(path + "/texture.png", :Nearest);
+        let mut texture = ugli.Texture.load(
+            &format!("\(path)/texture.png") |> as_str,
+            :Nearest,
+        );
         &mut texture |> ugli.Texture.set_wrap(:Repeat);
         { .buffer, .texture }
     );
@@ -48,11 +51,11 @@ const Model = (
         );
     );
 
-    const draw = (model :: Model.t, animated :: Bool, matrix :: Mat4) => (
-        let renderer = @current Renderer.Ctx;
-        let camera = @current geng.CameraUniforms.Ctx;
+    const draw = (model :: &Model.t, animated :: Bool, matrix :: Mat4) => (
+        let renderer = &(@current Renderer.Ctx);
+        let camera = &(@current geng.CameraUniforms.Ctx);
 
-        let program = renderer.program;
+        let program = &renderer.program;
         program |> ugli.Program.@"use";
 
         ugli.check_error();

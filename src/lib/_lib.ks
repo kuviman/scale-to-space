@@ -1,5 +1,6 @@
 module:
 
+use (import "./c.ks").*;
 const la = import "./la/_lib.ks";
 use la.*;
 

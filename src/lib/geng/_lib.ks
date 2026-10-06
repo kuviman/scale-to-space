@@ -35,10 +35,10 @@ const ContextT = newtype {
 };
 const Context = @context ContextT;
 
-const log = print;
+const log = println;
 
 const init = () -> ContextT => (
-    log("Initializing");
+    log!("Initializing");
     SDL.Init(@native "SDL_INIT_VIDEO");
     let window = SDL.CreateWindow(
         "Scale to Space",
@@ -46,7 +46,7 @@ const init = () -> ContextT => (
         480,
         @native "SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL",
     );
-    log("Created window");
+    log!("Created window");
 
     @native ''
         {
@@ -60,10 +60,10 @@ const init = () -> ContextT => (
     SDL.GL.MakeCurrent(window, sdl_gl_context);
     let vsync = cli.parse().vsync;
     SDL.GL.SetSwapInterval(if vsync then 1 else 0);
-    log("Created GL context");
+    log!("Created GL context");
 
     ugli.init();
-    log("Initialized ugli");
+    log!("Initialized ugli");
 
     let quad = {
         .program = load_shader("assets/shaders/quad"),
@@ -133,14 +133,18 @@ const draw_quad = (
     gl.draw_arrays(gl.TRIANGLE_FAN, 0, 4);
     #) );
 
-const load_texture = (path :: String, filter :: ugli.Filter) -> ugli.Texture => (
+const load_texture = (path :: &str, filter :: ugli.Filter) -> ugli.Texture => (
     ugli.Texture.load(path, filter)
 );
 
-const load_shader = (path :: String) -> ugli.Program => (
+const load_shader = (path :: &str) -> ugli.Program => (
     ugli.Program.init(
-        .vertex_glsl = fetch_string(path + "/vertex.glsl"),
-        .fragment_glsl = fetch_string(path + "/fragment.glsl"),
+        .vertex_glsl = &fetch_string(
+            &format!("\(path)/vertex.glsl") |> as_str
+        ) |> as_str,
+        .fragment_glsl = &fetch_string(
+            &format!("\(path)/fragment.glsl") |> as_str
+        ) |> as_str,
     )
 );
 

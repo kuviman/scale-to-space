@@ -14,23 +14,33 @@ const Entity = newtype {
 };
 
 const Face = newtype {
-    .vs :: ArrayList.t[Vec3],
+    .vs :: { Vec3, Vec3, Vec3 },
     .normal :: Vec3,
 };
+
+const Face_get_v = (face :: &Face, i :: Int32) -> Vec3 => (
+    if i == 0 then (
+        face^.vs.0
+    ) else if i == 1 then (
+        face^.vs.1
+    ) else if i == 2 then (
+        face^.vs.2
+    ) else panic("aaaaah")
+);
 
 const ChunkCoord = newtype { Int32, Int32, Int32 };
 
 impl ChunkCoord as std.cmp.Ord = {
-    .compare = (a, b) => with_return (
-        match std.cmp.default_compare(a.0, b.0) with (
+    .compare = (&a, &b) => with_return (
+        match std.cmp.default_compare(&a.0, &b.0) with (
             | :Equal => ()
             | other => return other
         );
-        match std.cmp.default_compare(a.1, b.1) with (
+        match std.cmp.default_compare(&a.1, &b.1) with (
             | :Equal => ()
             | other => return other
         );
-        match std.cmp.default_compare(a.2, b.2) with (
+        match std.cmp.default_compare(&a.2, &b.2) with (
             | :Equal => ()
             | other => return other
         );
@@ -58,7 +68,7 @@ const Mesh = newtype {
 };
 
 const chunk_box = (from :: ChunkCoord, to :: ChunkCoord) -> std.iter.Iterable[ChunkCoord] => {
-    .iter = consumer => (
+    .iter = @move consumer => (
         for x in from.0..to.0 do (
             for y in from.1..to.1 do (
                 for z in from.2..to.2 do (
@@ -86,14 +96,14 @@ impl Mesh as module = (
             if i % 1000 == 0 then yield();
             i += 1;
             let from = {
-                floor(min(min(face.vs.[0].0, face.vs.[1].0), face.vs.[2].0) / CHUNK_SIZE),
-                floor(min(min(face.vs.[0].1, face.vs.[1].1), face.vs.[2].1) / CHUNK_SIZE),
-                floor(min(min(face.vs.[0].2, face.vs.[1].2), face.vs.[2].2) / CHUNK_SIZE),
+                floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             let to = {
-                ceil(max(max(face.vs.[0].0, face.vs.[1].0), face.vs.[2].0) / CHUNK_SIZE),
-                ceil(max(max(face.vs.[0].1, face.vs.[1].1), face.vs.[2].1) / CHUNK_SIZE),
-                ceil(max(max(face.vs.[0].2, face.vs.[1].2), face.vs.[2].2) / CHUNK_SIZE),
+                ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             for co in chunk_box(from, to) do (
                 let chunk = &mut chunks |> OrdMap.get_or_init(co, Chunk.new);
@@ -111,7 +121,8 @@ const update = (result :: &mut Collision, collision :: Collision) => (
 );
 
 const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face) => (
-    for &p in &face^.vs |> ArrayList.iter do (
+    for i in 0..3 do (
+        let p = Face_get_v(face, i);
         let dv = Vec3.sub(entity.position, p);
         let len = Vec3.length(dv);
         if len < entity.radius then (
@@ -119,8 +130,8 @@ const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face)
         );
     );
     for i in 0..3 do (
-        let a = face^.vs.[i];
-        let b = face^.vs.[(i + 1) % 3];
+        let a = face |> Face_get_v(i);
+        let b = face |> Face_get_v((i + 1) % 3);
         if Vec3.dot(Vec3.sub(b, a), Vec3.sub(entity.position, a)) <= 0 then (
             continue;
         );
@@ -136,13 +147,13 @@ const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face)
             update(result, { .penetration = entity.radius - length, .normal = Vec3.normalize(delta) });
         );
     );
-    let d = Vec3.dot(Vec3.sub(entity.position, face^.vs.[0]), face^.normal);
+    let d = Vec3.dot(Vec3.sub(entity.position, face^.vs.0), face^.normal);
     if 0 < d and d < entity.radius then (
         let closest_point = Vec3.sub(entity.position, Vec3.mul(face^.normal, d));
         with_return (
             for i in 0..3 do (
-                let a = face^.vs.[i];
-                let b = face^.vs.[(i + 1) % 3];
+                let a = face |> Face_get_v(i);
+                let b = face |> Face_get_v((i + 1) % 3);
                 if Vec3.dot(Vec3.cross(face^.normal, Vec3.sub(b, a)), Vec3.sub(closest_point, a)) < 0 then (
                     return;
                 );
@@ -168,7 +179,7 @@ const collide = (entity :: Entity, mesh :: &Mesh) -> Option.t[Collision] => with
         ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
     };
     for co in chunk_box(from, to) do (
-        if &mesh^.chunks |> OrdMap.get(co) is :Some chunk then (
+        if &mesh^.chunks |> OrdMap.get(&co) is :Some chunk then (
             for face in &chunk^.faces |> ArrayList.iter do (
                 collide_face(&mut result, entity, face);
             );

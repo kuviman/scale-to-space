@@ -256,7 +256,7 @@ const convert = (event :: SDL.Event) -> Option.t[Event] => with_return (
 const iter_events = () -> std.iter.Iterable[Event] => (
     let mut ctx = (@current Context);
     {
-        .iter = consumer => (
+        .iter = @move consumer => (
             while SDL.PollEvent() is :Some sdl_event do (
                 if convert(sdl_event) is :Some event then (
                     consumer(event);

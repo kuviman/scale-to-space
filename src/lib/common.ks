@@ -32,7 +32,7 @@ const yield = () => (
     '';
 );
 
-const fetch_string = (path :: String) -> String => (
+const fetch_string = (path :: &str) -> String => (
     std.fs.read_file(path)
 );
 

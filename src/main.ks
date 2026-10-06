@@ -10,7 +10,7 @@ const FINISH :: Vec3 = { -120.198761, -1.251943, 147.323959 };
 # TODO IDK why but with const :: Float32 it thinks its Float64???
 const BEACHBALL_NET_X = `(-68.147575);
 
-module:
+use (module:
 
 const Power = newtype (
     | :None
@@ -800,12 +800,12 @@ const handle_mmo = (self :: &mut Game) => (
     while badcop.poll_message() is :Some msg do (
         match msg with (
             | :Connected id => (
-                print("Player connected: " + to_string(id));
+                println!("Player connected: \(id)");
                 &mut self^.other_players |> OrdMap.add(id, OtherPlayer.new());
             )
             | :Disconnected id => (
-                print("Player disconnected: " + to_string(id));
-                &mut self^.other_players |> OrdMap.remove(id);
+                println!("Player disconnected: \(id)");
+                &mut self^.other_players |> OrdMap.remove(&id);
             )
             | :Meta meta => (
                 self^.server_meta = meta;
@@ -815,7 +815,7 @@ const handle_mmo = (self :: &mut Game) => (
             )
             | :UpdatePlayer { .id, .data } => (
                 let player = &mut self^.other_players
-                    |> OrdMap.get_mut(id)
+                    |> OrdMap.get_mut(&id)
                     |> Option.unwrap;
                 OtherPlayer.update_net(player, data);
             )
@@ -838,42 +838,11 @@ const handle_mmo = (self :: &mut Game) => (
             | :PlayerMeta _ => (
             )
             | :Emote { .id, .index } => (
-                if &self^.other_players |> OrdMap.get(id) is :Some player then (
+                if &self^.other_players |> OrdMap.get(&id) is :Some player then (
                     emote(self, player^.position.value, index)
                 );
             )
         )
-    );
-
-    @comment_out (
-    while client.poll_message() is :Some msg do (
-        match msg with (
-            | :Connected id => (
-                print("Connected " + to_string(id));
-                let player = {
-                    .skin = 1,
-                    .position = { 0, 0, 0 },
-                    .rotation = Angle.from_degrees(0),
-                };
-                &mut self^.other_players |> OrdMap.add(id, player);
-            )
-            | :Disconnected id => (
-                print("Disconnected " + to_string(id));
-                &mut self^.other_players |> OrdMap.remove(id);
-            )
-            | :UpdatePlayer { .id, .state } => (
-                print("Updated " + to_string(id));
-                let player = &mut self^.other_players
-                    |> OrdMap.get_mut(id)
-                    |> Option.unwrap;
-                player^.position = state.position;
-            )
-            | :RequestUpdate => (
-                print("Update requested");
-                client.send(:Update { .position = self^.player.position });
-            )
-        )
-    );
     );
 );
 
@@ -1255,7 +1224,8 @@ const handle_mmo = (self :: &mut Game) => (
             );
             font.Font.draw(
                 &self^.assets.font,
-                to_string(self^.server_meta.score.0) + ":" + to_string(self^.server_meta.score.1),
+                &format!("\(self^.server_meta.score.0):\(self^.server_meta.score.1)")
+                    |> as_str,
                 .matrix = Mat4.translate({ -67.035286, -176.572922, 30.826015 })
                     |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)))
                     |> Mat4.mul_mat(Mat4.scale_uniform(5)),
@@ -1300,7 +1270,8 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                     font.Font.draw(
                         &self^.assets.font,
-                        to_string(collected_scales) + " dragon scales collected",
+                        &format!("\(collected_scales) dragon scales collected")
+                            |> as_str,
                         .matrix = Mat4.translate({ 0, -1, 0}),
                         .color,
                         .align = 0.5,
@@ -1326,15 +1297,12 @@ const handle_mmo = (self :: &mut Game) => (
                 if time is :Some t then (
                     font.Font.draw(
                         &self^.assets.font,
-                        (
+                        &(
                             let seconds :: Int32 = @native "\(t)";
                             let minutes = seconds / 60;
                             let seconds = seconds % 60;
-                            to_string(minutes)
-                            + ":"
-                            + to_string(seconds / 10)
-                            + to_string(seconds % 10)
-                        ),
+                            format!("\(minutes):\(seconds / 10)\(seconds % 10)")
+                        ) |> as_str,
                         .matrix = Mat4.translate({ 0, 7, 0})
                             |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(20)))
                             |> Mat4.mul_mat(Mat4.scale_uniform(2)),
@@ -1356,7 +1324,8 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                     font.Font.draw(
                         &self^.assets.font,
-                        "postjam power: " + power_text,
+                        &format!("postjam power: \(power_text)")
+                            |> as_str,
                         .matrix = Mat4.translate({ 2, -9.5, 0})
                             |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                         .color = { 0, 0, 0, 1 },
@@ -1379,7 +1348,8 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 font.Font.draw(
                     &self^.assets.font,
-                    "FPS: " + to_string(fps),
+                    &format!("FPS: \(fps)")
+                        |> as_str,
                     .matrix = Mat4.translate({ -2, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
@@ -1428,8 +1398,9 @@ const handle_mmo = (self :: &mut Game) => (
                             a |> ArrayList.at_mut(ArrayList.length(&a^) - 1),
                         );
                         a |> ArrayList.pop_back();
+                    ) else (
+                        i += 1;
                     );
-                    i += 1;
                 );
             );
             retain(&mut self^.particles, p => p^.t < 1);
@@ -1697,7 +1668,7 @@ const handle_mmo = (self :: &mut Game) => (
                     self^.player.skin = (self^.player.skin + 1) % ArrayList.length(&self^.assets.models.skins);
                 )
                 | :KeyPress :K => (
-                    print(to_string(self^.player.position));
+                    println!("\(self^.player.position)");
                 )
                 | :KeyPress :H => (
                     self^.show_timer = not self^.show_timer;
@@ -1766,6 +1737,7 @@ const handle_mmo = (self :: &mut Game) => (
         ),
     }
 );
+).*;
 
 const cli = import "./cli.ks";
 
@@ -1784,9 +1756,9 @@ if args.server is :Some address then (
     );
 );
 );
-@native "GC_enable_incremental()";
+
 if args.connect is :Some address then (
-    badcop.init(address);
+    badcop.init(&address |> as_str);
     badcop.set_name("<todo name>");
     # let c = client.connect(address);
     # with client.Ctx = c;

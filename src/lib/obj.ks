@@ -10,16 +10,10 @@ const Vertex = newtype {
     .a_normal :: Vec3,
 };
 
-impl Vertex as ToString = {
-    .to_string = v => (
-        "{"
-        + to_string(v.a_pos.0)
-        + ","
-        + to_string(v.a_pos.1)
-        + ","
-        + to_string(v.a_pos.2)
-        + "}"
-    )
+impl Vertex as std.fmt.Display = {
+    .display = (self, fmt) => (
+        std.fmt.write!(fmt, "\(self^.a_pos)");
+    ),
 };
 
 include_ast ugli.Vertex_derive(Vertex);
@@ -30,22 +24,12 @@ const Face = newtype {
     Vertex,
 };
 
-const strip_prefix = (s :: String, prefix :: String) -> Option.t[String] => (
-    if prefix |> String.length > s |> String.length then (
-        :None
-    ) else if (s |> String.substring(0, String.length(prefix)) == prefix) then (
-        :Some (s |> String.substring(String.length(prefix), String.length(s) - String.length(prefix)))
-    ) else (
-        :None
-    )
-);
-
-const parse = (s :: String) -> ArrayList.t[Face] => (
+const parse = (s :: &str) -> ArrayList.t[Face] => (
     let mut result = ArrayList.new();
     let mut vs = ArrayList.new();
     let mut vts = ArrayList.new();
     let mut vns = ArrayList.new();
-    let vertex = (s :: String) -> Vertex => (
+    let vertex = (s :: &str) -> Vertex => (
         let { v, vt_vn } = s |> String.split_once('/');
         let { vt, vn } = vt_vn |> String.split_once('/');
         let v :: Int32 = String.parse(v);
@@ -62,26 +46,26 @@ const parse = (s :: String) -> ArrayList.t[Face] => (
     for line in s |> String.lines do (
         if i % 1000 == 0 then yield();
         i += 1;
-        if line |> strip_prefix("v ") is :Some (s) then (
+        if line |> String.strip_prefix(.prefix = "v ") is :Some (s) then (
             let { x, yz } = s |> String.split_once(' ');
             let { y, z } = yz |> String.split_once(' ');
             let x = x |> String.parse;
             let y = y |> String.parse;
             let z = z |> String.parse;
             &mut vs |> ArrayList.push_back({ x, y, z });
-        ) else if line |> strip_prefix("vt ") is :Some (s) then (
+        ) else if line |> String.strip_prefix(.prefix = "vt ") is :Some (s) then (
             let { u, v } = s |> String.split_once(' ');
             let u = u |> String.parse;
             let v = v |> String.parse;
             &mut vts |> ArrayList.push_back({ u, v });
-        ) else if line |> strip_prefix("vn ") is :Some (s) then (
+        ) else if line |> String.strip_prefix(.prefix = "vn ") is :Some (s) then (
             let { x, yz } = s |> String.split_once(' ');
             let { y, z } = yz |> String.split_once(' ');
             let x = x |> String.parse;
             let y = y |> String.parse;
             let z = z |> String.parse;
             &mut vns |> ArrayList.push_back({ x, y, z });
-        ) else if line |> strip_prefix("f ") is :Some (s) then (
+        ) else if line |> String.strip_prefix(.prefix = "f ") is :Some (s) then (
             let mut vertices = ArrayList.new();
             for v in s |> String.split(' ') do (
                 &mut vertices |> ArrayList.push_back(vertex(v));

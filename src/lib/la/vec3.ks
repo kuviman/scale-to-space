@@ -1,15 +1,9 @@
 const Vec3 = newtype { Float32, Float32, Float32 };
 
-impl Vec3 as ToString = {
-    .to_string = m => (
-        "{ "
-        + to_string(m.0)
-        + ", "
-        + to_string(m.1)
-        + ", "
-        + to_string(m.2)
-        + " }"
-    )
+impl Vec3 as std.fmt.Display = {
+    .display = (self, fmt) => (
+        std.fmt.write!(fmt, "{ \(self^.0), \(self^.1), \(self^.2) }");
+    ),
 };
 
 impl Vec3 as module = (

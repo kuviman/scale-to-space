@@ -11,8 +11,8 @@ const init = () => (
     @native "#include <GL/glew.h>";
     let err :: gl.GLenum = @native "glewInit()";
     if @native "\(err) != GLEW_OK" then (
-        let error :: String = @native "String_from_C_String(glewGetErrorString(\(err)))";
-        panic("glewInit failed: " + error);
+        let error :: String = @native "String_from_C_StringView(glewGetErrorString(\(err)))";
+        panic_fmt!("glewInit failed: \(error)");
     );
     gl.enable(gl.DEPTH_TEST);
     @native "glPixelStorei(GL_UNPACK_ALIGNMENT, 1)";
@@ -51,7 +51,7 @@ const check_error = () => with_return (
     ) else (
         "Unrecognized GL error"
     );
-    panic("OpenGL error: " + error_string);
+    panic_fmt!("OpenGL error: \(error_string)");
 );
 
 const clear = (color :: Vec4) => (
@@ -73,16 +73,16 @@ const compile_shader = (shader_type, source) => (
     '' else ''
         #version 130
     '';
-    let source = source_prefix + "\n" + source;
+    let source = format!("\(source_prefix)\n\(source)");
     let shader = gl.create_shader(shader_type);
-    gl.shader_source(shader, source);
+    gl.shader_source(shader, &source |> as_str);
     gl.compile_shader(shader);
     let compile_status = gl.get_shader_parameter_bool(
         shader, gl.COMPILE_STATUS
     );
     if not compile_status then (
         let log = gl.get_shader_info_log(shader);
-        panic("Shader compilation failed: " + log);
+        panic_fmt!("Shader compilation failed: \(log)");
     );
     shader
 );
@@ -99,7 +99,7 @@ const ExistingUniformInfo = newtype {
     .index :: UInt32,
 };
 
-const UniformInfo = Option.t[ExistingUniformInfo];
+const UniformInfo = Option.t[type (&ExistingUniformInfo)];
 
 const calculate_uniforms = (program :: std.Ast, T :: Type) -> std.Ast => @cfg (
     | target.name == "interpreter" => (
@@ -115,8 +115,8 @@ const calculate_uniforms = (program :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     fields = `(
                         $fields,
                         .$name_ident = &$program.uniforms
-                            |> OrdMap.get(name)
-                            |> Option.map(&info => info)
+                            |> OrdMap.get(&name)
+                            |> Option.map(info => &info^^)
                     )
                 );
                 `({ $fields })
@@ -130,15 +130,15 @@ const Program = newtype {
     .ctx :: gl.ContextT,
     .handle :: gl.Program,
     .attributes :: OrdMap.t[String, AttributeInfo],
-    .uniforms :: OrdMap.t[String, ExistingUniformInfo],
+    .uniforms :: OrdMap.t[String, Box[ExistingUniformInfo]],
 };
 
 impl Program as module = (
     module:
 
     const init = (
-        .vertex_glsl :: String,
-        .fragment_glsl :: String,
+        .vertex_glsl :: &str,
+        .fragment_glsl :: &str,
     ) -> Program => (
         let vertex_shader = compile_shader(gl.VERTEX_SHADER, vertex_glsl);
         let fragment_shader = compile_shader(gl.FRAGMENT_SHADER, fragment_glsl);
@@ -157,7 +157,7 @@ impl Program as module = (
         let link_status = gl.get_program_parameter_bool(program, gl.LINK_STATUS);
         if not link_status then (
             let log = gl.get_program_info_log(program);
-            panic("Program link failed: " + log);
+            panic_fmt!("Program link failed: \(log)");
         );
         let active_attributes = gl.get_program_parameter_int(program, gl.ACTIVE_ATTRIBUTES)
             |> Int32_to_UInt32;
@@ -168,14 +168,14 @@ impl Program as module = (
                 dbg.print(active_info);
                 panic("active_info.size != 1");
             );
-            let location = gl.get_attrib_location(program, active_info.name)
+            let location = gl.get_attrib_location(program, &active_info.name |> as_str)
                 |> Option.unwrap;
             let attribute_info = {
                 .raw = active_info,
                 .location,
                 .index,
             };
-            OrdMap.add(&mut attributes, attribute_info.raw.name, attribute_info);
+            OrdMap.add(&mut attributes, String.clone(&attribute_info.raw.name), attribute_info);
         );
         let active_uniforms = gl.get_program_parameter_int(program, gl.ACTIVE_UNIFORMS)
             |> Int32_to_UInt32;
@@ -186,14 +186,17 @@ impl Program as module = (
                 dbg.print(active_info);
                 panic("active_info.size != 1");
             );
-            let location = gl.get_uniform_location(program, active_info.name)
+            let location = gl.get_uniform_location(program, &active_info.name |> as_str)
                 |> Option.unwrap;
             let uniform_info = {
                 .raw = active_info,
                 .location,
                 .index,
             };
-            OrdMap.add(&mut uniforms, uniform_info.raw.name, uniform_info);
+            &mut uniforms |> OrdMap.add(
+                String.clone(&uniform_info.raw.name),
+                Box_new(uniform_info)
+            );
         );
         {
             .ctx,
@@ -296,7 +299,7 @@ impl Texture as module = (
     );
 
     const load = (
-        path :: String,
+        path :: &str,
         filter :: Filter,
     ) -> Texture => (
         let surface = SDL.IMG.Load(path);
@@ -439,32 +442,31 @@ impl Texture as Uniform = {
 };
 
 const set_uniform = [T] (
-    program :: Program,
-    name :: String,
+    program :: &Program,
+    name :: &str,
     value :: T,
     state :: &mut DrawState,
 ) -> () => with_return (
-    let ctx = program.ctx;
-    let uniform_info = match &program.uniforms |> OrdMap.get(name) with (
-        | :Some (info) => info
+    # TODO unnecessary cloning on name
+    let uniform_info = match &program^.uniforms |> OrdMap.get(&String.from_str(name)) with (
+        | :Some info => &info^^
         | :None => return
     );
     (T as Uniform).set(uniform_info^.location, value, state);
 );
 
 const set_uniform_eff = [T] (
-    program :: Program,
+    program :: &Program,
     info :: UniformInfo,
     value :: T,
     state :: &mut DrawState,
 ) -> () => with_return (
     let info = info |> Option.unwrap_or_else(() => return);
-    let ctx = program.ctx;
-    (T as Uniform).set(info.location, value, state);
+    (T as Uniform).set(info^.location, value, state);
 );
 
 const Vertex = [Self] newtype {
-    .init_fields :: (&ArrayList.t[Self], (String, VertexBuffer.Field) -> ()) -> (),
+    .init_fields :: (&ArrayList.t[Self], (&str, VertexBuffer.Field) -> ()) -> (),
 };
 
 const Vertex_derive = (ty :: Type) -> std.Ast => @cfg (
@@ -481,7 +483,7 @@ const Vertex_derive = (ty :: Type) -> std.Ast => @cfg (
                 let name_ident = std.Ast.ident(name);
                 init_fields = `(
                     $init_fields;
-                    $f(name, VertexBuffer.init_field($data, v => v^.$name_ident));
+                    $f(&name |> as_str, VertexBuffer.init_field($data, v => v^.$name_ident));
                 );
             );
             `(
@@ -519,7 +521,7 @@ const VertexBuffer = (
         (V as Vertex).init_fields(
             data,
             (name, field) => (
-                OrdMap.add(&mut fields, name, field);
+                OrdMap.add(&mut fields, String.from_str(name), field);
             )
         );
         let length = data |> ArrayList.length;
@@ -563,19 +565,19 @@ const set_vertex_data_source = [V] (
     buffer :: VertexBuffer.t[V],
 ) -> () => (
     let ctx = program.ctx;
-    for &{ .key = name, .value = field } in &buffer.fields |> OrdMap.iter do (
+    for &{ .key = ref name, .value = ref field } in &buffer.fields |> OrdMap.iter do (
         let attribute_info = match &program.attributes |> OrdMap.get(name) with (
             | :Some (info) => info
             | :None => continue
         );
-        gl.bind_buffer(gl.ARRAY_BUFFER, field.buffer);
+        gl.bind_buffer(gl.ARRAY_BUFFER, field^.buffer);
         gl.vertex_attrib_pointer(
             attribute_info^.location,
-            field.@"type".size,
-            field.@"type".@"type",
+            field^.@"type".size,
+            field^.@"type".@"type",
             false,
-            field.stride,
-            field.offset,
+            field^.stride,
+            field^.offset,
         );
         gl.enable_vertex_attrib_array(attribute_info^.location);
     );
@@ -613,12 +615,7 @@ impl Vec2 as VertexAttribute = {
         .type_size = 4,
     },
     .construct_data = data => (
-        let mut list = ArrayList.new();
-        for &{ x, y } in ArrayList.iter(data) do (
-            &mut list |> ArrayList.push_back(x);
-            &mut list |> ArrayList.push_back(y);
-        );
-        RawData.new(&list)
+        RawData.new(data)
     ),
 };
 
@@ -629,13 +626,7 @@ impl Vec3 as VertexAttribute = {
         .type_size = 4,
     },
     .construct_data = data => (
-        let mut list = ArrayList.new();
-        for &{ x, y, z } in ArrayList.iter(data) do (
-            &mut list |> ArrayList.push_back(x);
-            &mut list |> ArrayList.push_back(y);
-            &mut list |> ArrayList.push_back(z);
-        );
-        RawData.new(&list)
+        RawData.new(data)
     ),
 };
 
@@ -646,13 +637,6 @@ impl Vec4 as VertexAttribute = {
         .type_size = 4,
     },
     .construct_data = data => (
-        let mut list = ArrayList.new();
-        for &{ x, y, z, w } in ArrayList.iter(data) do (
-            &mut list |> ArrayList.push_back(x);
-            &mut list |> ArrayList.push_back(y);
-            &mut list |> ArrayList.push_back(z);
-            &mut list |> ArrayList.push_back(w);
-        );
-        RawData.new(&list)
+        RawData.new(data)
     ),
 };

@@ -198,7 +198,7 @@ void _recv_next() {
   }
 }
 
-int badcop_init(char *conn_str);
+int badcop_init(const char *conn_str);
 
 /***
  * Get one message from the server.
@@ -282,7 +282,7 @@ void *badcop_poll_msg() {
 /***
  * Call to open a socket to the server.
  */
-int badcop_init(char *conn_str) {
+int badcop_init(const char *conn_str) {
   printf("connecting to %s\n", conn_str);
   disconnected_at = time(NULL);
   if (!*saved_conn_str) {

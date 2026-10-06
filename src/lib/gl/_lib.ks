@@ -1,3 +1,5 @@
+use (import "../c.ks").*;
+
 module:
 
 include "./types.ks";
@@ -31,8 +33,8 @@ const get_error = () -> GLenum => (
     @native "glGetError()"
 );
 
-const throw_error = (fn_name :: String) => (
-    panic(fn_name + " failed: " + to_string(get_error()));
+const throw_error = (fn_name :: &str) => (
+    panic_fmt!("\(fn_name) failed: \(get_error())");
 );
 
 const create_shader = (shader_type :: GLenum) -> Shader => (
@@ -46,7 +48,7 @@ const create_shader = (shader_type :: GLenum) -> Shader => (
 
 const shader_source = (
     shader :: Shader,
-    source :: String,
+    source :: &str,
 ) -> () => (
     let ctx = (@current Context);
     let length :: GLint = @native "\(source).length";
@@ -84,7 +86,7 @@ const get_shader_info_log = (shader :: Shader) -> String => (
     let buf :: @opaque_type "char*" = @native "Kast_allocate_array(&Byte_TypeInfo, \(buf_size))";
     let mut length :: GLsizei = 0;
     @native "glGetShaderInfoLog(\(shader), \(buf_size), \(&mut length), \(buf))";
-    @native "(String) { .buf = \(buf), .length = \(length) }"
+    @native "String_from_raw_parts(\(buf), \(length))"
 );
 
 const Program = @opaque_type "GLuint";
@@ -137,7 +139,7 @@ const get_program_info_log = (program :: Program) -> String => (
     let buf :: @opaque_type "char*" = @native "Kast_allocate_array(&Byte_TypeInfo, \(buf_size))";
     let mut length :: GLsizei = 0;
     @native "glGetProgramInfoLog(\(program), \(buf_size), \(&mut length), \(buf))";
-    @native "(String) { .buf = \(buf), .length = \(length) }"
+    @native "String_from_raw_parts(\(buf), \(length))"
 );
 
 const use_program = (program :: Program) -> () => (
@@ -160,7 +162,7 @@ const get_active_fn = type (
 const get_active_impl = (
     program :: std.Ast,
     index :: std.Ast,
-    get_fn :: String,
+    get_fn :: &str,
 ) -> std.Ast => @cfg (
     | target.name == "interpreter" => `(
         let ctx = (@current Context);
@@ -178,7 +180,9 @@ const get_active_impl = (
             \(&mut @"type"),
             \(name_buf)
         )'';
-        let name = @native "(String) { .buf = \(name_buf), .length = \(name_length) }";
+        let name :: String = @native ''
+            String_from_raw_parts(\(name_buf), \(name_length))
+        '';
         { .name, .size, .@"type" }
     )
     | true => panic("comptime only")
@@ -200,10 +204,12 @@ const get_active_uniform = (
 
 const get_attrib_location = (
     program :: Program,
-    name :: String,
+    name :: &str,
 ) -> Option.t[AttribLocation] => (
     let ctx = (@current Context);
-    let location = @native "glGetAttribLocation(\(program), String_to_C_String(\(name)))";
+    let name = C_String_from_str(name);
+    let location = @native "glGetAttribLocation(\(program), \(name))";
+    C_String_drop(name);
     if @native "\(location) == -1" then (
         :None
     ) else (
@@ -213,10 +219,12 @@ const get_attrib_location = (
 
 const get_uniform_location = (
     program :: Program,
-    name :: String,
+    name :: &str,
 ) -> Option.t[UniformLocation] => (
     let ctx = (@current Context);
-    let location = @native "glGetUniformLocation(\(program), String_to_C_String(\(name)))";
+    let name = C_String_from_str(name);
+    let location = @native "glGetUniformLocation(\(program), \(name))";
+    C_String_drop(name);
     if @native "\(location) == -1" then (
         :None
     ) else (
