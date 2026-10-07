@@ -16,7 +16,7 @@ build-native source="target/compiled/main.c" opt_level="0":
         -pthread \
         -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -O{{opt_level}}
+        -g -O{{opt_level}}
     # -fsanitize=memory \
     # -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
@@ -83,6 +83,9 @@ run *args:
 
 run-and-profile:
     perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
+
+build-tcc:
+    CC=tcc just build-podman
 
 build-podman:
     podman build -t notnix .

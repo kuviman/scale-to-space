@@ -11,4 +11,4 @@ RUN apt update && apt install -y \
     build-essential \
     git \
     just
-RUN git clone https://github.com/TinyCC/tinycc && cd tinycc && ./configure && make
+RUN git clone https://github.com/TinyCC/tinycc && cd tinycc && ./configure && make && make install
