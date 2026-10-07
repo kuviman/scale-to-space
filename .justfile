@@ -16,7 +16,7 @@ build-native source="target/compiled/main.c" opt_level="0":
         -pthread \
         -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -g -O{{opt_level}}
+        -O{{opt_level}}
     # -fsanitize=memory \
     # -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
@@ -83,6 +83,32 @@ run *args:
 
 run-and-profile:
     perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
+
+build-podman:
+    podman build -t notnix .
+    podman run -it \
+        -e CC=$CC \
+        -v $(pwd):/src -w /src \
+        notnix \
+        just build-native
+
+run-podman:
+    xhost +local:users
+    podman run -it \
+        --env DISPLAY=$DISPLAY \
+        -e PULSE_SERVER=unix:/tmp/pulse/native \
+        -e PULSE_COOKIE=/tmp/pulse/cookie \
+        -v $XDG_RUNTIME_DIR/pulse/native:/tmp/pulse/native:ro \
+        -v ~/.config/pulse/cookie:/tmp/pulse/cookie:ro \
+        -e XDG_RUNTIME_DIR=/tmp/runtime \
+        --volume /tmp/.X11-unix:/tmp/.X11-unix \
+        --device /dev/dri \
+        --device /dev/kfd \
+        --group-add keep-groups \
+        -v $XDG_RUNTIME_DIR/pipewire-0:/tmp/runtime/pipewire-0:ro \
+        -v $(pwd):/src -w /src \
+        notnix \
+        ./target/compiled/main.exe
 
 server:
     LSAN_OPTIONS='suppresions=suppr.txt' \

@@ -12,7 +12,7 @@ const Int32_to_Float32 = (x :: Int32) -> Float32 => @native "\(x)";
 const UInt32_to_Float32 = (x :: UInt32) -> Float32 => @native "\(x)";
 const UInt64_to_Float32 = (x :: UInt64) -> Float32 => @native "\(x)";
 const Float64_to_Float32 = (x :: Float64) -> Float32 => @native "\(x)";
-const Float32_to_Int32 = (x :: Float32) -> Int32 => @native "\(x)";
+const Float32_to_Int32 = (x :: Float32) -> Int32 => @native "(Int32)\(x)";
 
 const is_emscripten = () -> Bool => @native ''
     #ifdef __EMSCRIPTEN__

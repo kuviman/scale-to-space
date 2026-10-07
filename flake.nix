@@ -219,6 +219,15 @@
             cp -r assets $out/bin/
           '';
         });
+        c_libs = with pkgs; [
+          sdl3
+          sdl3-image
+          sdl3-mixer
+          libGL
+          glew
+          libbacktrace
+          libunwind
+        ];
       in
       {
         packages = {
@@ -243,19 +252,17 @@
                 just
                 caddy
                 inotify-tools
-                sdl3
-                sdl3-image
-                sdl3-mixer
-                libGL
-                glew
                 clang
+                tinycc
                 valgrind
                 emscripten
-                libbacktrace
                 butler
                 python314Packages.websockify
-              ];
+                xhost
+              ] ++ c_libs;
               # Since I dont have cmake or whatever
+              LIBRARY_PATH = pkgs.lib.makeSearchPath "lib" c_libs;
+              CPATH = pkgs.lib.makeSearchPath "include" c_libs;
               CLANGD_FLAGS = "--query-driver=${clang}/bin/clang*";
               KAST_PATH = "./kast_path";
               SDL3_WEB = "${sdl3-web}";
