@@ -2,9 +2,11 @@ use (import "../src/lib/_lib.ks").*;
 
 module:
 
-const init = (address :: String) => (
+const init = (address :: &str) => (
     @native "#include <net/client.h>";
-    @native "badcop_init(String_to_C_String(\(address)))";
+    let address_c = C_String_from_str(address);
+    @native "badcop_init(\(address_c))";
+    C_String_drop(address_c);
 );
 
 const PlayerData = newtype {
@@ -18,8 +20,10 @@ const PlayerData = newtype {
     .distance_to_beachball :: Float32,
 };
 
-const set_name = (name :: String) => (
-    @native "badcop_set_name(String_to_C_String(\(name)))";
+const set_name = (name :: &str) => (
+    let name = C_String_from_str(name);
+    @native "badcop_set_name(\(name))";
+    C_String_drop(name);
 );
 
 const beat_game = (score :: Int32) => (
@@ -229,7 +233,7 @@ const poll_message = () -> Option.t[ServerMessage] => with_return (
         return :Some :PlayerMeta {
             .id = @native "\(data)->id",
             .best_time = @native "\(data)->best_time",
-            .name = @native "String_from_C_String(\(data)->name)",
+            .name = @native "String_from_C_StringView(\(data)->name)",
         };
     );
     if @native "\(tag) == ServerEmote" then (

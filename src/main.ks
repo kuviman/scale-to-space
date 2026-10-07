@@ -10,7 +10,7 @@ const FINISH :: Vec3 = { -120.198761, -1.251943, 147.323959 };
 # TODO IDK why but with const :: Float32 it thinks its Float64???
 const BEACHBALL_NET_X = `(-68.147575);
 
-module:
+use (module:
 
 const Power = newtype (
     | :None
@@ -328,11 +328,11 @@ const draw_skin = (
     .volley :: Bool,
 ) => (
     let assets = @current Assets.Ctx;
-    let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets.models.skins) - 1);
+    let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets^.models.skins) - 1);
     if jetpack then (
         let angle = Angle.from_degrees(1000 * geng.time_since_start());
         Model.draw(
-            if skin == 5 then assets.models.badarms else assets.models.jetpack,
+            if skin == 5 then &assets^.models.badarms else &assets^.models.jetpack,
             false,
             Mat4.translate(position)
                 |> Mat4.mul_mat(Mat4.rotate(Vec3.cross({ 0, 0, 1 }, velocity), Angle.from_degrees(30 / player_speed)))
@@ -341,7 +341,7 @@ const draw_skin = (
     );
     if skin == 16 then (
         Model.draw(
-            assets.models.wormy,
+            &assets^.models.wormy,
             false,
             Mat4.translate(Vec3.add(position, { 0, 0, -scale + 1 }))
                 |> Mat4.mul_mat(Mat4.rotate_z(flat_rot)),
@@ -354,19 +354,19 @@ const draw_skin = (
         if volley then (
             @native "glCullFace(GL_FRONT)";
             Model.draw(
-                assets.volleyball,
+                &assets^.volleyball,
                 false,
                 matrix,
             );
             @native "glCullFace(GL_BACK)";
             Model.draw(
-                assets.volleyball,
+                &assets^.volleyball,
                 false,
                 matrix,
             );
         ) else (
             Model.draw(
-                assets.models.skins.[skin],
+                &assets^.models.skins.[skin],
                 false,
                 matrix,
             );
@@ -378,7 +378,7 @@ const draw_skin = (
         | :BeachballVertical _ => ()
         | :Jetpack ref jet => (
             Model.draw(
-                assets.powers.jetpack.model,
+                &assets^.powers.jetpack.model,
                 false,
                 Mat4.translate(position)
                     |> Mat4.mul_mat(Quat.into_mat4(rotation))
@@ -388,7 +388,7 @@ const draw_skin = (
         | :Parachute ref par => (
             if par^.active then (
                 Model.draw(
-                    assets.powers.parachute.model,
+                    &assets^.powers.parachute.model,
                     false,
                     Mat4.translate(position)
                         |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale}))
@@ -574,12 +574,14 @@ const draw_particle = (
         .texture,
     };
     Model.draw(
-        model,
+        &model,
         false,
         Mat4.translate(position)
             |> Mat4.mul_mat(Mat4.scale_uniform(scale))
             |> Mat4.mul_mat(Mat4.rotate_z(self^.camera.rotation))
     );
+    # TODO dirty hack, we shouldnt have been able to move ownership into model
+    self^.particle_buffer = model.buffer;
 );
 
 const restart = (self :: &mut Game) => (
@@ -800,12 +802,12 @@ const handle_mmo = (self :: &mut Game) => (
     while badcop.poll_message() is :Some msg do (
         match msg with (
             | :Connected id => (
-                print("Player connected: " + to_string(id));
+                println!("Player connected: \(id)");
                 &mut self^.other_players |> OrdMap.add(id, OtherPlayer.new());
             )
             | :Disconnected id => (
-                print("Player disconnected: " + to_string(id));
-                &mut self^.other_players |> OrdMap.remove(id);
+                println!("Player disconnected: \(id)");
+                &mut self^.other_players |> OrdMap.remove(&id);
             )
             | :Meta meta => (
                 self^.server_meta = meta;
@@ -815,7 +817,7 @@ const handle_mmo = (self :: &mut Game) => (
             )
             | :UpdatePlayer { .id, .data } => (
                 let player = &mut self^.other_players
-                    |> OrdMap.get_mut(id)
+                    |> OrdMap.get_mut(&id)
                     |> Option.unwrap;
                 OtherPlayer.update_net(player, data);
             )
@@ -838,42 +840,11 @@ const handle_mmo = (self :: &mut Game) => (
             | :PlayerMeta _ => (
             )
             | :Emote { .id, .index } => (
-                if &self^.other_players |> OrdMap.get(id) is :Some player then (
+                if &self^.other_players |> OrdMap.get(&id) is :Some player then (
                     emote(self, player^.position.value, index)
                 );
             )
         )
-    );
-
-    @comment_out (
-    while client.poll_message() is :Some msg do (
-        match msg with (
-            | :Connected id => (
-                print("Connected " + to_string(id));
-                let player = {
-                    .skin = 1,
-                    .position = { 0, 0, 0 },
-                    .rotation = Angle.from_degrees(0),
-                };
-                &mut self^.other_players |> OrdMap.add(id, player);
-            )
-            | :Disconnected id => (
-                print("Disconnected " + to_string(id));
-                &mut self^.other_players |> OrdMap.remove(id);
-            )
-            | :UpdatePlayer { .id, .state } => (
-                print("Updated " + to_string(id));
-                let player = &mut self^.other_players
-                    |> OrdMap.get_mut(id)
-                    |> Option.unwrap;
-                player^.position = state.position;
-            )
-            | :RequestUpdate => (
-                print("Update requested");
-                client.send(:Update { .position = self^.player.position });
-            )
-        )
-    );
     );
 );
 
@@ -988,8 +959,8 @@ const handle_mmo = (self :: &mut Game) => (
         ),
         .draw = self => with_return (
             self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
-            with Assets.Ctx = self^.assets;
-            with Model.Renderer.Ctx = self^.model_renderer;
+            with Assets.Ctx = &self^.assets;
+            with Model.Renderer.Ctx = &self^.model_renderer;
             with Model.PlayerCtx = {
                 .position = self^.player.position,
                 .radius = if self^.dead then 0 else self^.player.scale,
@@ -1002,10 +973,10 @@ const handle_mmo = (self :: &mut Game) => (
             );
             ugli.clear({ 0.8, 0.8, 1, 1 });
             for level_model in &self^.assets.models.level |> ArrayList.iter do (
-                Model.draw(level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
+                Model.draw(&level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
             );
             @native "glEnable(GL_CULL_FACE)";
-            for &model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
+            for model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
                 Model.draw(model, false, Mat4.IDENTITY);
             );
             # @native "glDisable(GL_CULL_FACE)";
@@ -1017,7 +988,7 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 let matrix = Mat4.translate(scale^.position)
                     |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(geng.time_since_start() * 90)));
-                Model.draw(self^.assets.models.dragon_scale, false, matrix);
+                Model.draw(&self^.assets.models.dragon_scale, false, matrix);
             );
             if not self^.dead then (
                 with Model.PlayerCtx = {
@@ -1032,7 +1003,7 @@ const handle_mmo = (self :: &mut Game) => (
                 OtherPlayer.draw(other_player);
             );
             Entity.draw(&self^.beachball.current, .jetpack = false);
-            Model.draw(self^.water, true, Mat4.IDENTITY);
+            Model.draw(&self^.water, true, Mat4.IDENTITY);
             for p in &self^.particles |> ArrayList.iter do (
                 draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
             );
@@ -1255,7 +1226,8 @@ const handle_mmo = (self :: &mut Game) => (
             );
             font.Font.draw(
                 &self^.assets.font,
-                to_string(self^.server_meta.score.0) + ":" + to_string(self^.server_meta.score.1),
+                &format!("\(self^.server_meta.score.0):\(self^.server_meta.score.1)")
+                    |> as_str,
                 .matrix = Mat4.translate({ -67.035286, -176.572922, 30.826015 })
                     |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)))
                     |> Mat4.mul_mat(Mat4.scale_uniform(5)),
@@ -1300,7 +1272,8 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                     font.Font.draw(
                         &self^.assets.font,
-                        to_string(collected_scales) + " dragon scales collected",
+                        &format!("\(collected_scales) dragon scales collected")
+                            |> as_str,
                         .matrix = Mat4.translate({ 0, -1, 0}),
                         .color,
                         .align = 0.5,
@@ -1326,15 +1299,12 @@ const handle_mmo = (self :: &mut Game) => (
                 if time is :Some t then (
                     font.Font.draw(
                         &self^.assets.font,
-                        (
+                        &(
                             let seconds :: Int32 = @native "\(t)";
                             let minutes = seconds / 60;
                             let seconds = seconds % 60;
-                            to_string(minutes)
-                            + ":"
-                            + to_string(seconds / 10)
-                            + to_string(seconds % 10)
-                        ),
+                            format!("\(minutes):\(seconds / 10)\(seconds % 10)")
+                        ) |> as_str,
                         .matrix = Mat4.translate({ 0, 7, 0})
                             |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(20)))
                             |> Mat4.mul_mat(Mat4.scale_uniform(2)),
@@ -1356,7 +1326,8 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                     font.Font.draw(
                         &self^.assets.font,
-                        "postjam power: " + power_text,
+                        &format!("postjam power: \(power_text)")
+                            |> as_str,
                         .matrix = Mat4.translate({ 2, -9.5, 0})
                             |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                         .color = { 0, 0, 0, 1 },
@@ -1379,7 +1350,8 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 font.Font.draw(
                     &self^.assets.font,
-                    "FPS: " + to_string(fps),
+                    &format!("FPS: \(fps)")
+                        |> as_str,
                     .matrix = Mat4.translate({ -2, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
@@ -1428,8 +1400,9 @@ const handle_mmo = (self :: &mut Game) => (
                             a |> ArrayList.at_mut(ArrayList.length(&a^) - 1),
                         );
                         a |> ArrayList.pop_back();
+                    ) else (
+                        i += 1;
                     );
-                    i += 1;
                 );
             );
             retain(&mut self^.particles, p => p^.t < 1);
@@ -1697,7 +1670,7 @@ const handle_mmo = (self :: &mut Game) => (
                     self^.player.skin = (self^.player.skin + 1) % ArrayList.length(&self^.assets.models.skins);
                 )
                 | :KeyPress :K => (
-                    print(to_string(self^.player.position));
+                    println!("\(self^.player.position)");
                 )
                 | :KeyPress :H => (
                     self^.show_timer = not self^.show_timer;
@@ -1766,6 +1739,7 @@ const handle_mmo = (self :: &mut Game) => (
         ),
     }
 );
+).*;
 
 const cli = import "./cli.ks";
 
@@ -1784,9 +1758,9 @@ if args.server is :Some address then (
     );
 );
 );
-@native "GC_enable_incremental()";
+
 if args.connect is :Some address then (
-    badcop.init(address);
+    badcop.init(&address |> as_str);
     badcop.set_name("<todo name>");
     # let c = client.connect(address);
     # with client.Ctx = c;

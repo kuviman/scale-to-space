@@ -26,33 +26,33 @@ const Config = newtype {
 impl Config as module = (
     module:
 
-    const parse = (s :: String) -> Config => (
+    const parse = (s :: &str) -> Config => (
         let get_char = (value :: json.Value) -> Char => (
             match value with (
-                | :String s => String.at(s, 0)
+                | :String s => String.at(&s |> as_str, 0)
                 | _ => panic("expected char")
             )
         );
         let get_float32 = (value :: json.Value) -> Float32 => (
             match value with (
-                | :Number number => number
-                    |> json.Number.into_f64
+                | :Number number => &number
+                    |> json.Number.to_f64
                     |> Float64_to_Float32
                 | _ => panic("expected number")
             )
         );
         let get_field = (
             json :: &json.Value,
-            field :: String,
+            field :: &str,
         ) -> &json.Value => with_return (
             match json^ with (
                 | :Object ref pairs => (
-                    for &{ key, ref value } in pairs |> ArrayList.iter do (
-                        if key == field then (
+                    for &{ ref key, ref value } in pairs |> ArrayList.iter do (
+                        if key |> as_str == field then (
                             return value;
                         );
                     );
-                    panic("no field " + field)
+                    panic_fmt!("no field \(field)")
                 )
                 | _ => panic("expected json obj")
             )
@@ -65,7 +65,7 @@ impl Config as module = (
                 | _ => panic("expected list for vec2")
             )
         );
-        let json = json.parse(&mut json.Reader.create(&s)) |> Result.unwrap;
+        let json = json.parse(&mut json.Reader.create(s)) |> Result.unwrap;
         {
             .tile_size = get_field(&json, "tile_size")^
                 |> get_vec2,
@@ -77,7 +77,8 @@ impl Config as module = (
                 let mut chars = OrdMap.new();
                 match get_field(&json, "chars")^ with (
                     | :Object ref pairs => (
-                        for &{ key, value } in pairs |> ArrayList.iter do (
+                        for &{ ref key, value } in pairs |> ArrayList.iter do (
+                            let key = key |> as_str;
                             let c = String.at(key, 0);
                             let tile_pos = value |> get_vec2;
                             &mut chars |> OrdMap.add(c, tile_pos);
@@ -133,7 +134,7 @@ const Uniforms = newtype {
     .u_uv_rect_size :: ugli.UniformInfo,
 };
 
-const single_char = (s :: String) -> Char => (
+const single_char = (s :: &str) -> Char => (
     if s |> String.length != 1 then (
         panic("c.length != 1");
     );
@@ -143,9 +144,14 @@ const single_char = (s :: String) -> Char => (
 impl Font as module = (
     module:
 
-    const load = (path :: String) -> Font => (
-        let config :: Config = fetch_string(path + "/config.json") |> Config.parse;
-        let texture = geng.load_texture(path + "/texture.png", :Nearest);
+    const load = (path :: &str) -> Font => (
+        let config :: Config = &fetch_string(
+            &format!("\(path)/config.json") |> as_str
+        ) |> as_str |> Config.parse;
+        let texture = geng.load_texture(
+            &format!("\(path)/texture.png") |> as_str,
+            :Nearest,
+        );
         let mut chars = OrdMap.new();
         let tile_size_uv = Vec2.vdiv(config.tile_size, texture.size);
         let uv_rect = (tile_pos :: Vec2) -> UvRect => {
@@ -173,20 +179,21 @@ impl Font as module = (
             );
         );
         let program = geng.load_shader("assets/shaders/font");
+        let uniforms = include_ast ugli.calculate_uniforms(
+            `(program),
+            Uniforms,
+        );
         {
             .unit_space_size = config.space_size / config.tile_size.1,
             .config,
             .texture,
             .chars,
             .program,
-            .uniforms = include_ast ugli.calculate_uniforms(
-                `(program),
-                Uniforms,
-            ),
+            .uniforms,
         }
     );
 
-    const measure = (font :: &Font, text :: String) -> Float32 => (
+    const measure = (font :: &Font, text :: &str) -> Float32 => (
         let size :: Float32 = 1;
         let tile_size = font^.config.tile_size;
         let single_char_size = Vec2.mul({ tile_size.0 / tile_size.1, 1 }, size);
@@ -203,25 +210,25 @@ impl Font as module = (
 
     const draw = (
         font :: &Font,
-        text :: String,
+        text :: &str,
         .matrix :: Mat4,
         .color :: Vec4,
         .align :: Float32,
     ) => (
-        let ctx = (@current geng.Context);
-        let camera = (@current geng.CameraUniforms.Ctx);
-        let program = font^.program;
+        let ref ctx = @current geng.Context;
+        let ref camera = @current geng.CameraUniforms.Ctx;
+        let program = &font^.program;
         program |> ugli.Program.@"use";
 
         let mut draw_state = ugli.DrawState.init();
         let draw_state = &mut draw_state;
 
-        program |> ugli.set_vertex_data_source(ctx.quad.buffer);
+        program |> ugli.set_vertex_data_source(&ctx^.quad.buffer);
 
-        program |> ugli.set_uniform_eff(font^.uniforms.u_view_matrix, camera.view_matrix, draw_state);
-        program |> ugli.set_uniform_eff(font^.uniforms.u_projection_matrix, camera.projection_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_view_matrix, camera^.view_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_projection_matrix, camera^.projection_matrix, draw_state);
         program |> ugli.set_uniform_eff(font^.uniforms.u_model_matrix, matrix, draw_state);
-        program |> ugli.set_uniform_eff(font^.uniforms.u_texture, font^.texture, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_texture, &font^.texture, draw_state);
         program |> ugli.set_uniform_eff(font^.uniforms.u_color, color, draw_state);
 
         let tile_size = font^.config.tile_size;
@@ -232,14 +239,8 @@ impl Font as module = (
                 pos.0 += font^.unit_space_size;
                 continue;
             );
-            match &font^.chars |> OrdMap.get(c) with (
-                | :None => panic(
-                    "Char "
-                    + to_string(c)
-                    + "("
-                    + to_string(Char.code(c))
-                    + ") is not in font"
-                )
+            match &font^.chars |> OrdMap.get(&c) with (
+                | :None => panic_fmt!("Char \(c) (\(Char.code(c))) is not in font")
                 | :Some (&uv) => (
                     program |> ugli.set_uniform_eff(font^.uniforms.u_uv_rect_pos, uv.pos, draw_state);
                     program |> ugli.set_uniform_eff(font^.uniforms.u_uv_rect_size, uv.size, draw_state);

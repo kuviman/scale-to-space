@@ -4,32 +4,33 @@ default:
 build-c source="src/main.ks":
     ${KASTC:-kastc} compile \
         --target c \
-        --typed-gc false \
         --output target/compiled/main.c \
         {{source}}
 
-build-native source="target/compiled/main.c":
+[arg("opt_level", short="O")]
+build-native source="target/compiled/main.c" opt_level="0":
     ${CC:-gcc} \
         {{source}} \
         -o target/compiled/main.exe \
         -I. \
         -pthread \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -g -O0
+        -g -O{{opt_level}}
+    # -fsanitize=memory \
     # -fsanitize=address,leak,undefined \
     # -fno-omit-frame-pointer \
 
 build-windows-do source:
     $CC \
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
         {{source}} \
         -o target/compiled/main.exe \
         -I. \
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
         -Wfatal-errors \
         -g -O3
@@ -48,9 +49,6 @@ build-emscripten source="target/compiled/main.c":
         -I. \
         --shell-file shell.html \
         -o target/web/index.html \
-        -I ${BOEHMGC_WEB}/include \
-        -L ${BOEHMGC_WEB}/lib \
-        -lgc \
         -I ${SDL3_WEB}/include \
         -L ${SDL3_WEB}/lib \
         -l SDL3 \
@@ -80,12 +78,40 @@ build src="src/main.ks":
     just build-native
 
 run *args:
-    LSAN_OPTIONS='suppresions=suppr.txt' \
-        ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
+    ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
     # ./target/compiled/main.exe --server 127.0.0.1:1235 --connect 127.0.0.1:1235
 
 run-and-profile:
     perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
+
+build-tcc:
+    CC=tcc just build-podman
+
+build-podman:
+    podman build -t notnix .
+    podman run -it \
+        -e CC=$CC \
+        -v $(pwd):/src -w /src \
+        notnix \
+        just build-native
+
+run-podman:
+    xhost +local:users
+    podman run -it \
+        --env DISPLAY=$DISPLAY \
+        -e PULSE_SERVER=unix:/tmp/pulse/native \
+        -e PULSE_COOKIE=/tmp/pulse/cookie \
+        -v $XDG_RUNTIME_DIR/pulse/native:/tmp/pulse/native:ro \
+        -v ~/.config/pulse/cookie:/tmp/pulse/cookie:ro \
+        -e XDG_RUNTIME_DIR=/tmp/runtime \
+        --volume /tmp/.X11-unix:/tmp/.X11-unix \
+        --device /dev/dri \
+        --device /dev/kfd \
+        --group-add keep-groups \
+        -v $XDG_RUNTIME_DIR/pipewire-0:/tmp/runtime/pipewire-0:ro \
+        -v $(pwd):/src -w /src \
+        notnix \
+        ./target/compiled/main.exe
 
 server:
     LSAN_OPTIONS='suppresions=suppr.txt' \

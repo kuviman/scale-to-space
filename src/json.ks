@@ -1,12 +1,18 @@
+use std.Ast;
+
 module:
 
 use (import "./lib/common.ks").*;
 use (import "../deps/json/lib.ks").*;
 
-const ErrorHandler = @context (type (String -> Never));
+const ErrorHandler = @context (type (&str -> Never));
 
-const error = [T] (s :: String) -> T => (
+const error = [T] (s :: &str) -> T => (
     (@current ErrorHandler)(s) |> from_never
+);
+
+const error_fmt = (args :: Ast) -> Ast => `(
+    error(&format!($args) |> as_str)
 );
 
 const make_number_int32 = (x :: Int32) -> Number => (
@@ -15,20 +21,20 @@ const make_number_int32 = (x :: Int32) -> Number => (
     {
         .neg,
         .digits = to_string(x),
-        .fraction_digits = "",
-        .exponent = { .neg = false, .digits = "" },
+        .fraction_digits = String.from_str(""),
+        .exponent = { .neg = false, .digits = String.from_str("") },
     }
 );
 const make_number_float32 = (x :: Float32) -> Number => (
     let neg = x < 0;
     let x = abs(x);
     let s = to_string(x);
-    let { digits, fraction_digits } = String.split_once(s, '.');
+    let { digits, fraction_digits } = String.split_once(&s |> as_str, '.');
     {
         .neg,
-        .digits,
-        .fraction_digits,
-        .exponent = { .neg = false, .digits = "" },
+        .digits = String.from_str(fraction_digits),
+        .fraction_digits = String.from_str(fraction_digits),
+        .exponent = { .neg = false, .digits = String.from_str("") },
     }
 );
 
@@ -131,13 +137,13 @@ const construct_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
     | true => panic("comptime only")
 );
 
-const find_field = (pairs :: &ArrayList.t[Pair], name :: String) -> Value => with_return (
-    for &{ key, value } in pairs |> ArrayList.iter do (
-        if key == name then (
-            return value;
+const find_field = (pairs :: &ArrayList.t[Pair], name :: &str) -> Value => with_return (
+    for &{ ref key, ref value } in pairs |> ArrayList.iter do (
+        if key |> as_str == name then (
+            return value^;
         );
     );
-    error("Expected field: " + name)
+    error_fmt!("Expected field: \(name)")
 );
 
 const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
@@ -151,8 +157,8 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
             )
             | :Float32 => `(
                 match $value with (
-                    | :Number n => n
-                        |> Number.into_f64
+                    | :Number n => &n
+                        |> Number.to_f64
                         |> Float64_to_Float32
                     | _ => error("Expected a float32")
                 )
@@ -161,7 +167,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                 match $value with (
                     | :Number n => match n |> Number.try_u32 with (
                         | :Ok n => n
-                        | :Error s => error("Expected int: " + s)
+                        | :Error s => error_fmt!("Expected int: \(s)")
                     )
                     | _ => error("Expected a float32")
                 )
@@ -192,7 +198,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                 for { name, FieldT } in std.collections.SList.into_iter(named) do (
                     let field_ident = `(field);
                     let field = `(
-                        let $field_ident = find_field(&$field_pairs, name);
+                        let $field_ident = find_field(&$field_pairs, &name |> as_str);
                         $(parse_value(field_ident, FieldT))
                     );
                     let name_ident = std.Ast.ident(name);
@@ -248,7 +254,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     $calculate_tag;
                     with_return (
                         $handle_variants;
-                        error("Unrecognized tag: " + $tag)
+                        error_fmt!("Unrecognized tag: \($tag)")
                     ) :: T
                 )
             )

@@ -33,7 +33,7 @@ const Assets = (
         },
     };
 
-    const Ctx = @context t;
+    const Ctx = @context type (&t);
 
     const Shaders = newtype {
         .model :: ugli.Program,
@@ -73,12 +73,16 @@ const Assets = (
     impl LevelModel as module = (
         module:
 
-        const load = (path :: String) -> LevelModel => (
+        const load = (path :: &str) -> LevelModel => (
             let mut collision_mesh = ArrayList.new();
-            let obj = obj.parse(std.fs.read_file(path + "/model.obj"));
+            let obj = obj.parse(
+                &std.fs.read_file(
+                    &format!("\(path)/model.obj") |> as_str
+                ) |> as_str
+            );
             for face in obj |> ArrayList.into_iter do (
-                let mut mesh_face = {
-                    .vs = ArrayList.new(),
+                let mesh_face = {
+                    .vs = { face.0.a_pos, face.1.a_pos, face.2.a_pos },
                     .normal = Vec3.normalize(
                         Vec3.cross(
                             Vec3.sub(face.1.a_pos, face.0.a_pos),
@@ -86,21 +90,25 @@ const Assets = (
                         )
                     ),
                 };
-                &mut mesh_face.vs |> ArrayList.push_back(face.0.a_pos);
-                &mut mesh_face.vs |> ArrayList.push_back(face.1.a_pos);
-                &mut mesh_face.vs |> ArrayList.push_back(face.2.a_pos);
                 &mut collision_mesh |> ArrayList.push_back(mesh_face);
             );
             let collision_mesh = collisions.Mesh.new(collision_mesh);
             let model = Model.load(path);
-            let particle = geng.load_texture(path + "/particle.png", :Nearest);
+            let particle = geng.load_texture(
+                &format!("\(path)/particle.png") |> as_str,
+                :Nearest,
+            );
             let properties = (
-                let source = std.fs.read_file(path + "/properties.json");
-                let value = json.parse(&mut json.Reader.create(&source))
+                let source = std.fs.read_file(
+                    &format!("\(path)/properties.json") |> as_str
+                );
+                let value = json.parse(&mut json.Reader.create(&source |> as_str))
                     |> Result.unwrap;
                 include_ast json.parse_value(`(value), collisions.MeshProperties)
             );
-            let sfx = geng.audio.load(path + "/sfx.wav");
+            let sfx = geng.audio.load(
+                &format!("\(path)/sfx.wav") |> as_str
+            );
             {
                 .collision_mesh,
                 .model,
@@ -155,7 +163,10 @@ const Assets = (
             .model = geng.load_shader("assets/shaders/model"),
         };
 
-        let load_texture = path => geng.load_texture("assets/textures/" + path, :Nearest);
+        let load_texture = path => geng.load_texture(
+            &format!("assets/textures/\(path)") |> as_str,
+            :Nearest,
+        );
 
         let textures = {
             .fullscreen = load_texture("ui/fullscreen.png"),

@@ -1,14 +1,12 @@
 module:
 
-const Path = String;
-
-const join_path = (a :: Path, b :: Path) -> Path => (
-    a + "/" + b
+const join_path = (a :: &str, b :: &str) -> String => (
+    format!("\(a)/\(b)")
 );
 
 const Load = [Self] newtype {
-    .load :: Path -> Self,
-    .default_ext :: Option.t[String],
+    .load :: &str -> Self,
+    .default_ext :: Option.t[&str],
 };
 
 const derive_Load = (ty :: Type) -> std.Ast => @cfg (

@@ -1,13 +1,15 @@
+use (import "../c.ks").*;
+
 module:
 
 const Int = Int32;
 
 const GetError = () -> String => (
-    @native "String_from_C_String(SDL_GetError())"
+    String_from_C_str(@native "SDL_GetError()")
 );
 
-const throw_error = (fn_name :: String) => (
-    panic(fn_name + " failed: " + GetError());
+const throw_error = [T] (fn_name :: &str) -> T => (
+    panic_fmt!("\(fn_name) failed: \(GetError())")
 );
 
 const PropertiesID = @opaque_type "SDL_PropertiesID";
@@ -57,21 +59,21 @@ const Window = @opaque_type "SDL_Window*";
 const WindowFlags = @opaque_type "SDL_WindowFlags";
 
 const CreateWindow = (
-    title :: String,
+    title :: &str,
     width :: Int,
     height :: Int,
     window_flags :: WindowFlags,
 ) -> Window => (
+    let title = C_String_from_str(title);
     let window = @native ''
         SDL_CreateWindow(
-            String_to_C_String(\(
-                title
-            )),
+            \(title),
             \(width),
             \(height),
             \(window_flags)
         )
     '';
+    C_String_drop(title);
     if @native "\(window) == NULL" then (
         throw_error("SDL_CreateWindow");
     );
@@ -164,9 +166,11 @@ const FlipSurface = (surface :: Surface, mode :: FlipMode) => (
 const IMG = (
     module:
 
-    const Load = (path :: String) -> Surface => (
+    const Load = (path :: &str) -> Surface => (
         @native "#include <SDL3_image/SDL_image.h>";
-        let surface = @native "IMG_Load(String_to_C_String(\(path)))";
+        let path = C_String_from_str(path);
+        let surface = @native "IMG_Load(\(path))";
+        C_String_drop(path);
         if @native "\(surface) == NULL" then (
             throw_error("IMG_Load");
         );
@@ -204,11 +208,12 @@ const MIX = (
 
     const LoadAudio = (
         mixer :: Mixer,
-        path :: String,
+        path :: &str,
         predecode :: Bool,
     ) -> Audio => (
-        let path_c :: @opaque_type "const char*" = @native "String_to_C_String(\(path))";
-        let audio = @native "MIX_LoadAudio(\(mixer), \(path_c), \(predecode))";
+        let path = C_String_from_str(path);
+        let audio = @native "MIX_LoadAudio(\(mixer), \(path), \(predecode))";
+        C_String_drop(path);
         if @native "\(audio) == NULL" then (
             throw_error("MIX_LoadAudio");
         );
@@ -368,8 +373,8 @@ const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
         let app_impl = STORE_APP_IMPL |> Option.unwrap;
         let app_impl :: &App[A] = @native "\(app_impl)";
         let app_impl = app_impl^;
-        let mut initialized_app = app_impl.init();
-        @native "*\(app_state) = (void*) \(&mut initialized_app)";
+        let mut initialized_app = Box_new(app_impl.init());
+        @native "*\(app_state) = (void*) \(Box_leak(initialized_app))";
         @native "SDL_APP_CONTINUE"
     );
     const iterate_callback = [A] fn @call "C" (

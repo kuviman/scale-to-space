@@ -26,7 +26,7 @@ char saved_conn_str[256] = {};
 int connected = 0;
 time_t disconnected_at = 0;
 struct TcsPoll *tcs_poll = NULL;
-TcsSocket client_socket = TCS_SOCKET_INVALID;
+TcsSocket client_socket;
 UserData user = {};
 struct TcsPollEvent ev[1] = {};
 
@@ -198,7 +198,7 @@ void _recv_next() {
   }
 }
 
-int badcop_init(char *conn_str);
+int badcop_init(const char *conn_str);
 
 /***
  * Get one message from the server.
@@ -282,7 +282,7 @@ void *badcop_poll_msg() {
 /***
  * Call to open a socket to the server.
  */
-int badcop_init(char *conn_str) {
+int badcop_init(const char *conn_str) {
   printf("connecting to %s\n", conn_str);
   disconnected_at = time(NULL);
   if (!*saved_conn_str) {
@@ -308,6 +308,8 @@ int badcop_init(char *conn_str) {
 #endif
 
   tcs_poll_add(tcs_poll, client_socket, NULL, TCS_POLL_READ);
+
+  return 0;
 }
 
 /***
@@ -322,4 +324,6 @@ int cleanup() {
 
   if (tcs_lib_cleanup() != TCS_SUCCESS)
     return show_error("Could not free tinycsocket");
+
+  return 0;
 }
