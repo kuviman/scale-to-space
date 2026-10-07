@@ -215,20 +215,20 @@ impl Font as module = (
         .color :: Vec4,
         .align :: Float32,
     ) => (
-        let ctx = (@current geng.Context);
-        let camera = (@current geng.CameraUniforms.Ctx);
-        let program = font^.program;
+        let ref ctx = @current geng.Context;
+        let ref camera = @current geng.CameraUniforms.Ctx;
+        let program = &font^.program;
         program |> ugli.Program.@"use";
 
         let mut draw_state = ugli.DrawState.init();
         let draw_state = &mut draw_state;
 
-        program |> ugli.set_vertex_data_source(ctx.quad.buffer);
+        program |> ugli.set_vertex_data_source(&ctx^.quad.buffer);
 
-        program |> ugli.set_uniform_eff(font^.uniforms.u_view_matrix, camera.view_matrix, draw_state);
-        program |> ugli.set_uniform_eff(font^.uniforms.u_projection_matrix, camera.projection_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_view_matrix, camera^.view_matrix, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_projection_matrix, camera^.projection_matrix, draw_state);
         program |> ugli.set_uniform_eff(font^.uniforms.u_model_matrix, matrix, draw_state);
-        program |> ugli.set_uniform_eff(font^.uniforms.u_texture, font^.texture, draw_state);
+        program |> ugli.set_uniform_eff(font^.uniforms.u_texture, &font^.texture, draw_state);
         program |> ugli.set_uniform_eff(font^.uniforms.u_color, color, draw_state);
 
         let tile_size = font^.config.tile_size;

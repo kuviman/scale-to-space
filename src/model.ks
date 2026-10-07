@@ -42,7 +42,7 @@ const Model = (
     impl Renderer as module = (
         module:
 
-        const Ctx = @context Renderer;
+        const Ctx = @context type (&Renderer);
 
         const init = () -> Renderer => (
             {
@@ -52,10 +52,10 @@ const Model = (
     );
 
     const draw = (model :: &Model.t, animated :: Bool, matrix :: Mat4) => (
-        let renderer = &(@current Renderer.Ctx);
-        let camera = &(@current geng.CameraUniforms.Ctx);
+        let renderer = @current Renderer.Ctx;
+        let ref camera = @current geng.CameraUniforms.Ctx;
 
-        let program = &renderer.program;
+        let program = &renderer^.program;
         program |> ugli.Program.@"use";
 
         ugli.check_error();
@@ -88,21 +88,21 @@ const Model = (
         program
             |> ugli.set_uniform(
                 "u_view_matrix",
-                camera.view_matrix,
+                camera^.view_matrix,
                 draw_state
             );
         ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_projection_matrix",
-                camera.projection_matrix,
+                camera^.projection_matrix,
                 draw_state
             );
         ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_texture",
-                model.texture,
+                &model^.texture,
                 draw_state
             );
         ugli.check_error();
@@ -132,9 +132,9 @@ const Model = (
             );
         ugli.check_error();
         ugli.check_error();
-        program |> ugli.set_vertex_data_source(model.buffer);
+        program |> ugli.set_vertex_data_source(&model^.buffer);
         ugli.check_error();
-        gl.draw_arrays(gl.TRIANGLES, 0, model.buffer.length);
+        gl.draw_arrays(gl.TRIANGLES, 0, model^.buffer.length);
         ugli.check_error();
     );
 );

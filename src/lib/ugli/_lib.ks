@@ -149,7 +149,7 @@ impl Program as module = (
         vertex_shader :: gl.Shader,
         fragment_shader :: gl.Shader,
     ) -> Program => (
-        let ctx = (@current gl.Context);
+        let ctx = @current gl.Context;
         let program = gl.create_program();
         gl.attach_shader(program, vertex_shader);
         gl.attach_shader(program, fragment_shader);
@@ -206,8 +206,8 @@ impl Program as module = (
         }
     );
 
-    const @"use" = (program :: Program) => (
-        gl.use_program(program.handle);
+    const @"use" = (program :: &Program) => (
+        gl.use_program(program^.handle);
     );
 );
 
@@ -347,8 +347,6 @@ impl DrawState as module = (
     module:
 
     const init = () -> DrawState => (
-        let ctx = (@current gl.Context);
-
         gl.enable(gl.BLEND);
         gl.blend_func_separate(
             gl.SRC_ALPHA,
@@ -356,7 +354,6 @@ impl DrawState as module = (
             gl.ONE_MINUS_DST_ALPHA,
             gl.ONE,
         );
-
         { .active_texture_index = 0 }
     );
 );
@@ -367,14 +364,12 @@ const Uniform = [Self] newtype {
 
 impl Float32 as Uniform = {
     .set = (location, x, state) => (
-        let ctx = (@current gl.Context);
         @native "glUniform1f(\(location), \(x))";
     ),
 };
 
 impl Vec2 as Uniform = {
     .set = (location, value, state) => (
-        let ctx = (@current gl.Context);
         let { x, y } = value;
         @native "glUniform2f(\(location), \(x), \(y))";
     ),
@@ -382,7 +377,6 @@ impl Vec2 as Uniform = {
 
 impl Vec3 as Uniform = {
     .set = (location, value, state) => (
-        let ctx = (@current gl.Context);
         let { x, y, z } = value;
         @native "glUniform3f(\(location), \(x), \(y), \(z))";
     ),
@@ -390,7 +384,6 @@ impl Vec3 as Uniform = {
 
 impl Vec4 as Uniform = {
     .set = (location, value, state) => (
-        let ctx = (@current gl.Context);
         let { x, y, z, w } = value;
         @native "glUniform4f(\(location), \(x), \(y), \(z), \(w))";
     ),
@@ -398,7 +391,6 @@ impl Vec4 as Uniform = {
 
 impl Mat3 as Uniform = {
     .set = (location, value, state) => (
-        let ctx = (@current gl.Context);
         let mut list = ArrayList.new();
         let { a, b, c } = value;
         let add = (f) => (
@@ -415,7 +407,6 @@ impl Mat3 as Uniform = {
 
 impl Mat4 as Uniform = {
     .set = (location, value, state) => (
-        let ctx = (@current gl.Context);
         let mut list = ArrayList.new();
         let add = (f) => (
             &mut list |> ArrayList.push_back(f(value.0));
@@ -431,11 +422,10 @@ impl Mat4 as Uniform = {
     ),
 };
 
-impl Texture as Uniform = {
+impl type (&Texture) as Uniform = {
     .set = (location, texture, state) => (
-        let ctx = (@current gl.Context);
         @native "glActiveTexture(\(gl.TEXTURE0 + state^.active_texture_index))";
-        gl.bind_texture(gl.TEXTURE_2D, texture.handle);
+        gl.bind_texture(gl.TEXTURE_2D, texture^.handle);
         @native "glUniform1i(\(location), \(state^.active_texture_index))";
         state^.active_texture_index += 1;
     ),
@@ -561,12 +551,11 @@ const VertexBuffer = (
 );
 
 const set_vertex_data_source = [V] (
-    program :: Program,
-    buffer :: VertexBuffer.t[V],
+    program :: &Program,
+    buffer :: &VertexBuffer.t[V],
 ) -> () => (
-    let ctx = program.ctx;
-    for &{ .key = ref name, .value = ref field } in &buffer.fields |> OrdMap.iter do (
-        let attribute_info = match &program.attributes |> OrdMap.get(name) with (
+    for &{ .key = ref name, .value = ref field } in &buffer^.fields |> OrdMap.iter do (
+        let attribute_info = match &program^.attributes |> OrdMap.get(name) with (
             | :Some (info) => info
             | :None => continue
         );

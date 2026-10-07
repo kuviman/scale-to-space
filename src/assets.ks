@@ -33,7 +33,7 @@ const Assets = (
         },
     };
 
-    const Ctx = @context t;
+    const Ctx = @context type (&t);
 
     const Shaders = newtype {
         .model :: ugli.Program,
@@ -226,7 +226,6 @@ const Assets = (
             ),
             .level = (
                 let mut list = ArrayList.new();
-                @comment_out(
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/grass"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/lava"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/logs"));
@@ -238,7 +237,6 @@ const Assets = (
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/mushroom"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rocket"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/net"));
-                );
                 list
             ),
             .level_nocollisions = (

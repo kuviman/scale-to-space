@@ -97,33 +97,6 @@
               cmake --install . --prefix $out
             '';
           };
-        boehmgc-web = with pkgs-25-11;
-          stdenv.mkDerivation {
-            name = "boehmgc-web";
-            src = fetchFromGitHub {
-              owner = "bdwgc";
-              repo = "bdwgc";
-              rev = "331e007fffa19b6344982b7eb3f4ea8f973f68c7";
-              hash = "sha256-dlcXJNDSMXlbeQqUd5deghJuS3dXrn3MQENpI8BE/ZE=";
-            };
-            buildInputs = [
-              emscripten
-              automake
-              autoconf
-              libtool
-            ];
-            buildPhase = ''
-              ./autogen.sh
-              export EM_CACHE="$(pwd)/.cache/emscripten"
-              # LDFLAGS="-sBINARYEN_EXTRA_PASSES='--spill-pointers'"
-              emconfigure ./configure
-              emmake make
-            '';
-            installPhase = ''
-              emmake make DESTDIR=$(pwd)/dest install
-              cp -r dest/usr/local $out
-            '';
-          };
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
             (prev: {
@@ -204,7 +177,6 @@
                 "-DSDLMIXER_OPUS=OFF"
               ];
             })
-            boehmgc
           ];
         };
         test-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation (windows-dep-attrs // {
@@ -251,7 +223,6 @@
       {
         packages = {
           inherit
-            boehmgc-web
             sdl3-win
             game-c-source
             game-win
@@ -275,8 +246,6 @@
                 sdl3
                 sdl3-image
                 sdl3-mixer
-                boehmgc
-                boehmgc-web
                 libGL
                 glew
                 clang
@@ -289,10 +258,10 @@
               # Since I dont have cmake or whatever
               CLANGD_FLAGS = "--query-driver=${clang}/bin/clang*";
               KAST_PATH = "./kast_path";
-              BOEHMGC_WEB = "${boehmgc-web}";
               SDL3_WEB = "${sdl3-web}";
               SDL3_IMAGE_WEB = "${sdl3-image-web}";
               SDL3_MIXER_WEB = "${sdl3-mixer-web}";
+              LSAN_OPTIONS = "suppresions=suppr.txt";
               inherit SERVER_ADDRESS;
             };
       });

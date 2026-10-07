@@ -328,11 +328,11 @@ const draw_skin = (
     .volley :: Bool,
 ) => (
     let assets = @current Assets.Ctx;
-    let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets.models.skins) - 1);
+    let skin = clamp_int(skin, .min = 0, .max = ArrayList.length(&assets^.models.skins) - 1);
     if jetpack then (
         let angle = Angle.from_degrees(1000 * geng.time_since_start());
         Model.draw(
-            if skin == 5 then assets.models.badarms else assets.models.jetpack,
+            if skin == 5 then &assets^.models.badarms else &assets^.models.jetpack,
             false,
             Mat4.translate(position)
                 |> Mat4.mul_mat(Mat4.rotate(Vec3.cross({ 0, 0, 1 }, velocity), Angle.from_degrees(30 / player_speed)))
@@ -341,7 +341,7 @@ const draw_skin = (
     );
     if skin == 16 then (
         Model.draw(
-            assets.models.wormy,
+            &assets^.models.wormy,
             false,
             Mat4.translate(Vec3.add(position, { 0, 0, -scale + 1 }))
                 |> Mat4.mul_mat(Mat4.rotate_z(flat_rot)),
@@ -354,19 +354,19 @@ const draw_skin = (
         if volley then (
             @native "glCullFace(GL_FRONT)";
             Model.draw(
-                assets.volleyball,
+                &assets^.volleyball,
                 false,
                 matrix,
             );
             @native "glCullFace(GL_BACK)";
             Model.draw(
-                assets.volleyball,
+                &assets^.volleyball,
                 false,
                 matrix,
             );
         ) else (
             Model.draw(
-                assets.models.skins.[skin],
+                &assets^.models.skins.[skin],
                 false,
                 matrix,
             );
@@ -378,7 +378,7 @@ const draw_skin = (
         | :BeachballVertical _ => ()
         | :Jetpack ref jet => (
             Model.draw(
-                assets.powers.jetpack.model,
+                &assets^.powers.jetpack.model,
                 false,
                 Mat4.translate(position)
                     |> Mat4.mul_mat(Quat.into_mat4(rotation))
@@ -388,7 +388,7 @@ const draw_skin = (
         | :Parachute ref par => (
             if par^.active then (
                 Model.draw(
-                    assets.powers.parachute.model,
+                    &assets^.powers.parachute.model,
                     false,
                     Mat4.translate(position)
                         |> Mat4.mul_mat(Mat4.translate({ 0, 0, scale}))
@@ -574,12 +574,14 @@ const draw_particle = (
         .texture,
     };
     Model.draw(
-        model,
+        &model,
         false,
         Mat4.translate(position)
             |> Mat4.mul_mat(Mat4.scale_uniform(scale))
             |> Mat4.mul_mat(Mat4.rotate_z(self^.camera.rotation))
     );
+    # TODO dirty hack, we shouldnt have been able to move ownership into model
+    self^.particle_buffer = model.buffer;
 );
 
 const restart = (self :: &mut Game) => (
@@ -957,8 +959,8 @@ const handle_mmo = (self :: &mut Game) => (
         ),
         .draw = self => with_return (
             self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
-            with Assets.Ctx = self^.assets;
-            with Model.Renderer.Ctx = self^.model_renderer;
+            with Assets.Ctx = &self^.assets;
+            with Model.Renderer.Ctx = &self^.model_renderer;
             with Model.PlayerCtx = {
                 .position = self^.player.position,
                 .radius = if self^.dead then 0 else self^.player.scale,
@@ -971,10 +973,10 @@ const handle_mmo = (self :: &mut Game) => (
             );
             ugli.clear({ 0.8, 0.8, 1, 1 });
             for level_model in &self^.assets.models.level |> ArrayList.iter do (
-                Model.draw(level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
+                Model.draw(&level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
             );
             @native "glEnable(GL_CULL_FACE)";
-            for &model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
+            for model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
                 Model.draw(model, false, Mat4.IDENTITY);
             );
             # @native "glDisable(GL_CULL_FACE)";
@@ -986,7 +988,7 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 let matrix = Mat4.translate(scale^.position)
                     |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(geng.time_since_start() * 90)));
-                Model.draw(self^.assets.models.dragon_scale, false, matrix);
+                Model.draw(&self^.assets.models.dragon_scale, false, matrix);
             );
             if not self^.dead then (
                 with Model.PlayerCtx = {
@@ -1001,7 +1003,7 @@ const handle_mmo = (self :: &mut Game) => (
                 OtherPlayer.draw(other_player);
             );
             Entity.draw(&self^.beachball.current, .jetpack = false);
-            Model.draw(self^.water, true, Mat4.IDENTITY);
+            Model.draw(&self^.water, true, Mat4.IDENTITY);
             for p in &self^.particles |> ArrayList.iter do (
                 draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
             );

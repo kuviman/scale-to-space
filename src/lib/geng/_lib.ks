@@ -115,23 +115,24 @@ const draw_quad = (
     .texture :: ugli.Texture,
 ) => (
     panic("TODO DRAW QUAD");
-(#
-    let ctx = (@current Context);
-    let camera = (@current CameraCtx);
-    let program = ctx.quad.program;
-    program |> ugli.Program.@"use";
+    @comment_out (
+        let ref ctx = @current Context;
+        let ref camera = @current CameraCtx;
+        let program = &ctx.quad.program;
+        program |> ugli.Program.@"use";
 
-    let mut draw_state = ugli.DrawState.init();
-    let draw_state = &mut draw_state;
+        let mut draw_state = ugli.DrawState.init();
+        let draw_state = &mut draw_state;
 
-    program |> ugli.set_uniform("u_pos", pos, draw_state);
-    program |> ugli.set_uniform("u_half_size", half_size, draw_state);
-    program |> ugli.set_uniform("u_view_matrix", camera.view_matrix, draw_state);
-    program |> ugli.set_uniform("u_projection_matrix", camera.projection_matrix, draw_state);
-    program |> ugli.set_uniform("u_texture", texture, draw_state);
-    program |> ugli.set_vertex_data_source(ctx.quad.buffer);
-    gl.draw_arrays(gl.TRIANGLE_FAN, 0, 4);
-    #) );
+        program |> ugli.set_uniform("u_pos", pos, draw_state);
+        program |> ugli.set_uniform("u_half_size", half_size, draw_state);
+        program |> ugli.set_uniform("u_view_matrix", camera.view_matrix, draw_state);
+        program |> ugli.set_uniform("u_projection_matrix", camera.projection_matrix, draw_state);
+        program |> ugli.set_uniform("u_texture", texture, draw_state);
+        program |> ugli.set_vertex_data_source(&ctx.quad.buffer);
+        gl.draw_arrays(gl.TRIANGLE_FAN, 0, 4);
+    )
+);
 
 const load_texture = (path :: &str, filter :: ugli.Filter) -> ugli.Texture => (
     ugli.Texture.load(path, filter)
@@ -149,8 +150,8 @@ const load_shader = (path :: &str) -> ugli.Program => (
 );
 
 const is_fullscreen = () -> Bool => (
-    let ctx = @current Context;
-    @native "(SDL_GetWindowFlags(\(ctx.window)) & SDL_WINDOW_FULLSCREEN) != 0"
+    let ref ctx = @current Context;
+    @native "(SDL_GetWindowFlags(\(ctx^.window)) & SDL_WINDOW_FULLSCREEN) != 0"
 );
 
 const set_fullscreen = (full :: Bool) -> () => (
@@ -163,8 +164,8 @@ const toggle_fullscreen = () => (
 );
 
 const get_window_size = () -> Vec2 => (
-    let ctx = @current Context;
-    let { width, height } = SDL.GetWindowSize(ctx.window);
+    let ref ctx = @current Context;
+    let { width, height } = SDL.GetWindowSize(ctx^.window);
     { Int32_to_Float32(width), Int32_to_Float32(height) }
 );
 
@@ -174,14 +175,13 @@ const time_since_start = () -> Float32 => (
 );
 
 const await_next_frame = () => (
-    let ctx = @current Context;
-    SDL.GL.SwapWindow(ctx.window);
-    let { width, height } = SDL.GetWindowSize(ctx.window);
+    let ref ctx = @current Context;
+    SDL.GL.SwapWindow(ctx^.window);
+    let { width, height } = SDL.GetWindowSize(ctx^.window);
     gl.viewport(0, 0, width, height);
 );
 
 const deinit = () => (
-    let ctx = @current Context;
     SDL.Quit();
 );
 
@@ -203,24 +203,31 @@ const SDL_App = [G] newtype {
 const run = [G :: Type] () => (
     let sdl_app :: SDL.App[SDL_App[G]] = {
         .init = () => (
-            let geng_ctx = geng.init();
-            let input = geng.input.init();
-            let audio = geng.audio.init();
-            with geng.Context = geng_ctx;
+            let mut geng_ctx = geng.init();
+            let mut input = geng.input.init();
+            let mut audio = geng.audio.init();
             with gl.Context = geng_ctx.gl_context;
+            with geng.Context = geng_ctx;
             with geng.input.Context = input;
             with geng.audio.Context = audio;
+            let game = (G as App).init();
+            let time = time_since_start();
+            # TODO moving ownership back here should be done differently
+            audio = @current geng.audio.Context;
+            input = @current geng.input.Context;
+            geng_ctx = @current geng.Context;
+            geng_ctx.gl_context = @current gl.Context;
             {
-                .game = (G as App).init(),
-                .time = time_since_start(),
+                .game,
+                .time,
                 .geng_ctx,
                 .input,
                 .audio,
             }
         ),
         .iterate = self => (
-            with geng.Context = self^.geng_ctx;
             with gl.Context = self^.geng_ctx.gl_context;
+            with geng.Context = self^.geng_ctx;
             with geng.input.Context = self^.input;
             with geng.audio.Context = self^.audio;
             let delta_time = (
@@ -233,6 +240,11 @@ const run = [G :: Type] () => (
             (G as App).draw(&mut self^.game);
             ugli.check_error();
             geng.await_next_frame();
+            # TODO moving ownership back here should be done differently
+            self^.audio = @current geng.audio.Context;
+            self^.input = @current geng.input.Context;
+            self^.geng_ctx = @current geng.Context;
+            self^.geng_ctx.gl_context = @current gl.Context;
             :Continue
         ),
         .event = (self, &event) => with_return (
@@ -246,6 +258,11 @@ const run = [G :: Type] () => (
                 );
                 (G as App).handle_event(&mut self^.game, event);
             );
+            # TODO moving ownership back here should be done differently
+            self^.audio = @current geng.audio.Context;
+            self^.input = @current geng.input.Context;
+            self^.geng_ctx = @current geng.Context;
+            self^.geng_ctx.gl_context = @current gl.Context;
             :Continue
         ),
         .quit = (mut self, result) => (
@@ -256,6 +273,11 @@ const run = [G :: Type] () => (
             with geng.input.Context = self^.input;
             with geng.audio.Context = self^.audio;
             geng.deinit();
+            # TODO moving ownership back here should be done differently
+            self^.audio = @current geng.audio.Context;
+            self^.input = @current geng.input.Context;
+            self^.geng_ctx = @current geng.Context;
+            self^.geng_ctx.gl_context = @current gl.Context;
         ),
     };
     SDL.EnterAppMainCallbacks[SDL_App[G]](sdl_app);

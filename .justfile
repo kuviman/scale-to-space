@@ -4,33 +4,33 @@ default:
 build-c source="src/main.ks":
     ${KASTC:-kastc} compile \
         --target c \
-        --typed-gc false \
         --output target/compiled/main.c \
         {{source}}
 
-build-native source="target/compiled/main.c":
+[arg("opt_level", short="O")]
+build-native source="target/compiled/main.c" opt_level="0":
     ${CC:-gcc} \
         {{source}} \
         -o target/compiled/main.exe \
         -I. \
         -pthread \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         -Wfatal-errors \
-        -fsanitize=address,leak,undefined \
-        -g -O0
-    # -fno-omit-frame-pointer \
+        -g -O{{opt_level}}
     # -fsanitize=memory \
+    # -fsanitize=address,leak,undefined \
+    # -fno-omit-frame-pointer \
 
 build-windows-do source:
     $CC \
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
         {{source}} \
         -o target/compiled/main.exe \
         -I. \
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
-        -lm -lgc -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
         -Wfatal-errors \
         -g -O3
@@ -49,9 +49,6 @@ build-emscripten source="target/compiled/main.c":
         -I. \
         --shell-file shell.html \
         -o target/web/index.html \
-        -I ${BOEHMGC_WEB}/include \
-        -L ${BOEHMGC_WEB}/lib \
-        -lgc \
         -I ${SDL3_WEB}/include \
         -L ${SDL3_WEB}/lib \
         -l SDL3 \
@@ -81,8 +78,7 @@ build src="src/main.ks":
     just build-native
 
 run *args:
-    LSAN_OPTIONS='suppresions=suppr.txt' \
-        ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
+    ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
     # ./target/compiled/main.exe --server 127.0.0.1:1235 --connect 127.0.0.1:1235
 
 run-and-profile:
