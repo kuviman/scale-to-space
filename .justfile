@@ -84,6 +84,10 @@ run *args:
 run-and-profile:
     perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
 
+test-blend *args:
+    (cd blend-parser && make)
+    ./blend-parser/main.exe "assets/source_assets.blend" {{args}}
+
 build-tcc:
     CC=tcc just build-podman
 
