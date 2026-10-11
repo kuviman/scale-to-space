@@ -10,10 +10,12 @@ typedef struct {
   bool dump_bytes;
 } DumpBlockWithTypeArgs;
 
-void dump_block_with_type(void *data_void, Blend_Block *block) {
+bool dump_block_with_type(void *data_void, Blend_Block *block) {
   const DumpBlockWithTypeArgs *data = data_void;
   if (block) {
     if (strcmp(block->type->name, data->type_name) == 0) {
+      fprintf(stdout, "%p + %zu = %p: \n", block->old, block->body_length,
+              block->old + block->body_length);
       Blend_Obj obj = Blend_Obj_get_path(Blend_Block_as_obj(block), data->path);
       if (data->dump_bytes) {
         size_t size = Blend_Full_Type_size(obj.type);
@@ -25,11 +27,13 @@ void dump_block_with_type(void *data_void, Blend_Block *block) {
       fprintf(stderr, "\n");
     }
   }
+  return true;
 }
 
-void dump_block(void *data, Blend_Block *block) {
+bool dump_block(void *data, Blend_Block *block) {
   Blend_Block_dump(stderr, block);
   fprintf(stderr, "\n");
+  return true;
 }
 
 int main(int argc, const char **argv) {
@@ -38,7 +42,7 @@ int main(int argc, const char **argv) {
     exit(1);
   }
   const char *path = argv[1];
-  Blend *blend = Blend_parse(path);
+  Blend *blend = Blend_load(path);
   if (argc >= 3 && strcmp(argv[2], "--generate-bindings") == 0) {
     FILE *output = stdout;
     if (argc >= 4) {
@@ -60,7 +64,7 @@ int main(int argc, const char **argv) {
       exit(1);
     }
     const char *type_name = argv[3];
-    Blend_Type *type = Blend_find_type(blend, type_name);
+    Blend_Type *type = Blend_find_type(blend, Blend_String_of_c(type_name));
     Blend_Type_dump(stderr, type);
     fprintf(stderr, "\n");
   }

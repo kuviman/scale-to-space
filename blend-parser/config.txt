@@ -1,0 +1,7 @@
+Scene
+ID
+char
+Collection
+.children :: DoubleLinkedList[CollectionChild]
+CollectionChild
+

@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +69,9 @@ const void *Reader_read_nocopy(Reader *reader, size_t size, const char *what) {
 }
 
 void Reader_read(Reader *reader, void *ptr, size_t size, const char *what) {
+  if (size == 0) {
+    return;
+  }
   memcpy(ptr, Reader_read_nocopy(reader, size, what), size);
 }
 
@@ -172,13 +176,16 @@ Blend_Block read_block(Reader *reader) {
   log_trace("code = %.*s", (int)sizeof(block.code), block.code);
   block.sdna_index = Reader_read_uint32(reader, "block sdna index");
   log_trace("sdna index = %u", block.sdna_index);
-  uint64_t old = Reader_read_uint64(reader, "block mem addr");
-  log_trace("mem_addr = %llu", (unsigned long long int)old);
+  Reader_read(reader, &block.old, sizeof(block.old), "block old mem addr");
+  // block.old = (void *)Reader_read_uint64(reader, "block old mem addr");
+  log_trace("mem_addr = %p", block.old);
   block.body_length = Reader_read_uint64(reader, "block body length");
   log_trace("body length = %zu", block.body_length);
   block.count = Reader_read_uint64(reader, "block count");
   log_trace("count = %zu", block.count);
-  block.body = Reader_read_nocopy(reader, block.body_length, "block body");
+  block.body = try_raw_malloc(block.body_length);
+  /* we actually copy memory, because it needs to be aligned properly */
+  Reader_read(reader, (void *)block.body, block.body_length, "block body");
   return block;
 }
 
@@ -187,7 +194,6 @@ Blend_DNA_Name parse_name(const char *s) {
   Blend_Type_Qualifiers qualifiers = {
       .is_fn = false,
       .ptr_order = 0,
-      .array_len = 0,
       .array_order = 0,
   };
   if (strchr(s, '(') != NULL) {
@@ -337,7 +343,8 @@ Blend_String read_file_to_end(const char *path) {
   };
 }
 
-Blend *Blend_parse(const char *path) {
+Blend *last_loaded;
+Blend *Blend_load(const char *path) {
   log_trace("Loading %s", path);
   Blend *blend = malloc(sizeof(Blend));
   if (blend == NULL) {
@@ -354,7 +361,7 @@ Blend *Blend_parse(const char *path) {
   blend->block_list = NULL;
   bool parsed_dna = false;
   while (reader.offset != reader.data_size) {
-    BlockListNode *old = blend->block_list;
+    Blend_BlockListNode *old = blend->block_list;
     try_malloc(blend->block_list);
     Blend_Block block = read_block(&reader);
     if (strncmp(block.code, "DNA1", sizeof(block.code)) == 0) {
@@ -368,7 +375,7 @@ Blend *Blend_parse(const char *path) {
     blend->block_list->next = old;
   }
   {
-    BlockListNode *node = blend->block_list;
+    Blend_BlockListNode *node = blend->block_list;
     while (node != NULL) {
       Blend_Block *block = &node->block;
       if (block->sdna_index >= blend->dna.types_len) {
@@ -379,14 +386,16 @@ Blend *Blend_parse(const char *path) {
     }
   }
   log_info("Successfully loaded %s", path);
+  last_loaded = blend;
   return blend;
 }
 
 void Blend_drop(Blend *blend) {
   free((void *)blend->data);
-  BlockListNode *node = blend->block_list;
+  Blend_BlockListNode *node = blend->block_list;
   while (node != NULL) {
-    BlockListNode *next = node->next;
+    Blend_BlockListNode *next = node->next;
+    free((void *)node->block.body);
     free(node);
     node = next;
   }
@@ -403,10 +412,10 @@ void Blend_drop(Blend *blend) {
   free(blend);
 }
 
-Blend_Type *Blend_find_type(Blend *blend, const char *name) {
+Blend_Type *Blend_find_type(Blend *blend, Blend_String name) {
   for (size_t i = 0; i < blend->dna.types_len; i++) {
     Blend_Type *type = &blend->dna.types[i];
-    if (strcmp(type->name, name) == 0) {
+    if (str_Blend_String_cmp(type->name, name) == 0) {
       return type;
     }
   }
@@ -484,23 +493,27 @@ void Blend_Type_dump(FILE *out, Blend_Type *type) {
 }
 
 void Blend_find_all_blocks(Blend *blend,
-                           void (*f)(void *user_data, Blend_Block *block),
+                           bool (*f)(void *user_data, Blend_Block *block),
                            void *user_data) {
-  BlockListNode *node = blend->block_list;
+  Blend_BlockListNode *node = blend->block_list;
   while (node != NULL) {
-    f(user_data, &node->block);
+    if (!f(user_data, &node->block)) {
+      return;
+    }
     node = node->next;
   }
 }
 
 void Blend_find_all_blocks_with_code(Blend *blend, const char *code,
-                                     void (*f)(void *user_data,
+                                     bool (*f)(void *user_data,
                                                Blend_Block *block),
                                      void *user_data) {
-  BlockListNode *node = blend->block_list;
+  Blend_BlockListNode *node = blend->block_list;
   while (node != NULL) {
     if (strncmp(node->block.code, code, sizeof(node->block.code)) == 0) {
-      f(user_data, &node->block);
+      if (!f(user_data, &node->block)) {
+        return;
+      }
     }
     node = node->next;
   }
@@ -596,7 +609,58 @@ int str_Blend_String_cmp(const char *a, Blend_String b) {
   return strcmp_0_n(a, b.s, b.length);
 }
 
+Blend_Full_Type pointed_type(Blend_Full_Type pointer_type) {
+  if (pointer_type.qualifiers.array_order != 0) {
+    panic("trying to get pointed type of array");
+  }
+  if (pointer_type.qualifiers.ptr_order == 0) {
+    panic("trying to get pointed type of non-ptr");
+  }
+  Blend_Full_Type pointed_type = pointer_type;
+  pointed_type.qualifiers.ptr_order--;
+  return pointed_type;
+}
+
+Blend_Full_Type array_element_type(Blend_Full_Type array_type) {
+  if (array_type.qualifiers.array_order == 0) {
+    panic("trying to get element_type of non-array");
+  }
+  Blend_Full_Type element_type = array_type;
+  element_type.qualifiers.array_order--;
+  for (size_t i = 0; i < element_type.qualifiers.array_order; i++) {
+    element_type.qualifiers.array_len[i] =
+        array_type.qualifiers.array_len[i + 1];
+  }
+  return element_type;
+}
+
 Blend_Obj Blend_Obj_get_field(Blend_Obj obj, Blend_String field) {
+  if (str_Blend_String_cmp("*", field) == 0) {
+    const uint8_t *original_ptr = Blend_Obj_as_ptr(obj);
+    if (original_ptr == NULL) {
+      panic("trying to deref NULL");
+    }
+    const uint8_t *fixed_ptr = NULL;
+    for (Blend_BlockListNode *node = last_loaded->block_list; node != NULL;
+         node = node->next) {
+      // printf("considering old=%p\n", node->block.old);
+      if (node->block.old <= original_ptr &&
+          original_ptr < node->block.old + node->block.body_length) {
+        ptrdiff_t offset = original_ptr - node->block.old;
+        // printf("!! %p %p %zu %zd\n", original_ptr, node->block.old,
+        //        node->block.body_length, offset);
+        fixed_ptr = node->block.body + offset;
+        break;
+      }
+    }
+    if (fixed_ptr == NULL) {
+      panic("Couldn't find matching block for ptr");
+    }
+    return (Blend_Obj){
+        .data = fixed_ptr,
+        .type = pointed_type(obj.type),
+    };
+  }
   if (obj.type.qualifiers.array_order) {
     panic("getting field of array");
   }
@@ -628,11 +692,10 @@ Blend_Obj Blend_Obj_index(Blend_Obj obj, size_t i) {
   if (i >= array_len) {
     panic("Out of bounds: index = %zu, array len = %zu", i, array_len);
   }
-  Blend_Full_Type element_ty = obj.type;
-  element_ty.qualifiers.array_order--;
+  Blend_Full_Type element_type = array_element_type(obj.type);
   return (Blend_Obj){
-      .data = obj.data + Blend_Full_Type_size(element_ty) * i,
-      .type = element_ty,
+      .data = obj.data + Blend_Full_Type_size(element_type) * i,
+      .type = element_type,
   };
 }
 
@@ -662,9 +725,11 @@ size_t Blend_Full_Type_size(Blend_Full_Type type) {
   return size;
 }
 
+void *Blend_Obj_as_ptr(Blend_Obj obj) { return *((void **)obj.data); }
+
 void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
   if (obj.type.qualifiers.ptr_order) {
-    fprintf(out, "<ptr> :: ");
+    fprintf(out, "%p :: ", Blend_Obj_as_ptr(obj));
     Blend_Full_Type_dump(out, obj.type);
     return;
   }
@@ -692,8 +757,7 @@ void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
         println(out);
       }
     } else {
-      Blend_Full_Type element_ty = obj.type;
-      element_ty.qualifiers.array_order--;
+      Blend_Full_Type element_ty = array_element_type(obj.type);
       fprintf(out, " ... :: ");
       Blend_Full_Type_dump(out, element_ty);
       fprintf(out, " ");
@@ -707,6 +771,7 @@ void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
   if (type->struct_def != NULL) {
     print_indent_if_needed(out);
     if (indent < max_indent) {
+      // fprintf(out, "%p ", obj.data);
       fprintf(out, "{");
       indent++;
       for (size_t i = 0; i < type->struct_def->fields_len; i++) {
@@ -754,6 +819,8 @@ Blend_String Blend_String_of_c(const char *s) {
   };
 }
 
+void Blend_String_drop(Blend_String s) { free((void *)s.s); }
+
 const char *KAST_KEYWORDS[] = {"type", "str", "match", "module"};
 const char *KAST_KEYWORDS_REPLACE[] = {"_type", "_str", "_match", "_module"};
 Blend_String kast_ident(Blend_String ident) {
@@ -768,18 +835,28 @@ Blend_String kast_ident(Blend_String ident) {
 }
 
 void write_as_kast_type(FILE *out, Blend_Full_Type type) {
+  if (type.qualifiers.is_fn) {
+    panic("no fn poiters in kast pls");
+  }
+  if (type.qualifiers.array_order == 0 && type.qualifiers.ptr_order == 1 &&
+      strcmp(type.inner->name, "void") == 0) {
+    fprintf(out, "&str");
+    return;
+  }
+  if (type.qualifiers.array_order == 1 && type.qualifiers.ptr_order == 0 &&
+      strcmp(type.inner->name, "char") == 0) {
+    fprintf(out, "&str");
+    return;
+  }
   for (size_t i = 0; i < type.qualifiers.array_order; i++) {
     fprintf(out, "Array[");
   }
-  if (type.qualifiers.array_order > 0) {
-    fprintf(out, "type (");
-  }
   for (size_t i = 0; i < type.qualifiers.ptr_order; i++) {
-    fprintf(out, "&");
+    fprintf(out, "Option.t[type (&");
   }
   fprintf(out, "%s", type.inner->name);
-  if (type.qualifiers.array_order > 0) {
-    fprintf(out, ")");
+  for (size_t i = 0; i < type.qualifiers.ptr_order; i++) {
+    fprintf(out, ")]");
   }
   for (size_t i = type.qualifiers.array_order; i > 0;) {
     i--;
@@ -787,28 +864,342 @@ void write_as_kast_type(FILE *out, Blend_Full_Type type) {
   }
 }
 
+struct {
+  Blend *blend;
+  Blend_StringMap *types;
+} CONFIG;
+
+typedef struct {
+  Blend_StringMap *fields;
+} TypeConfig;
+
+typedef struct {
+  Blend_Type *double_linked_list_node_type;
+} FieldConfig;
+
+void *NOT_NULL = (void *)1;
+
+void config_generic_field(FieldConfig *field, Blend_String generic_name,
+                          Blend_String generic_arg) {
+  if (str_Blend_String_cmp("DoubleLinkedList", generic_name) == 0) {
+    field->double_linked_list_node_type =
+        Blend_find_type(CONFIG.blend, generic_arg);
+    return;
+  }
+  panic("unrecognized generic %.*s", (int)generic_name.length, generic_name.s);
+}
+
+const char *skip_str(const char *s, const char *prefix) {
+  const char *result = s;
+  const char *remaining_prefix = prefix;
+  while (*remaining_prefix) {
+    if (*result != *remaining_prefix) {
+      panic("expected prefix %s", prefix);
+    }
+    result++;
+    remaining_prefix++;
+  }
+  return result;
+}
+
+void init_config(Blend *blend) {
+  CONFIG.blend = blend;
+  CONFIG.types = Blend_StringMap_new();
+  Blend_String source = read_file_to_end("blend-parser/config.txt");
+  const char *source_end = source.s + source.length;
+  const char *s = source.s;
+  Blend_String last_type_name = {.s = NULL, .length = 0};
+  while (s - source.s < source.length) {
+    const char *newline = memchr(s, '\n', source_end - s);
+    Blend_String line;
+    if (newline == NULL) {
+      line = (Blend_String){
+          .s = s,
+          .length = source_end - s,
+      };
+      s = source.s + source.length;
+    } else {
+      line = (Blend_String){
+          .s = s,
+          .length = newline - s,
+      };
+      s = newline + 1;
+    }
+    if (line.length > 0 && line.s[0] != '#') {
+      if (line.s[0] == '.') {
+        if (last_type_name.s == NULL) {
+          panic("need type before field config");
+        }
+        TypeConfig *type_config =
+            Blend_StringMap_get(CONFIG.types, last_type_name);
+        if (type_config == NULL) {
+          panic("type config not found");
+        }
+        const char *space = memchr(line.s, ' ', line.length);
+        if (space == NULL) {
+          panic("need space");
+        }
+        Blend_String field_name = {
+            .s = line.s + 1,
+            .length = space - (line.s + 1),
+        };
+        FieldConfig *field_config =
+            Blend_StringMap_get(type_config->fields, field_name);
+        if (field_config == NULL) {
+          try_malloc(field_config);
+          Blend_StringMap_add(type_config->fields, field_name, field_config);
+        }
+        const char *open_bracket = memchr(line.s, '[', line.length);
+        if (open_bracket == NULL) {
+          panic("need [");
+        }
+        const char *close_bracket = memchr(line.s, ']', line.length);
+        if (close_bracket == NULL) {
+          panic("need ]");
+        }
+        if (close_bracket < open_bracket) {
+          panic("][");
+        }
+        const char *value_start = skip_str(space, " :: ");
+        Blend_String generic_name = {
+            .s = value_start,
+            .length = open_bracket - value_start,
+        };
+        Blend_String generic_arg = {
+            .s = open_bracket + 1,
+            .length = close_bracket - (open_bracket + 1),
+        };
+        config_generic_field(field_config, generic_name, generic_arg);
+      } else {
+        last_type_name = line;
+        TypeConfig *type_config;
+        try_malloc(type_config);
+        *type_config = (TypeConfig){
+            .fields = Blend_StringMap_new(),
+        };
+        Blend_StringMap_add(CONFIG.types, line, type_config);
+      }
+    }
+  }
+  Blend_String_drop(source);
+}
+void FieldConfig_drop(void *data) {
+  FieldConfig *field_config = data;
+  free(field_config);
+}
+
+void TypeConfig_drop(void *data) {
+  TypeConfig *type_config = data;
+  Blend_StringMap_drop(type_config->fields, FieldConfig_drop);
+  free(type_config);
+}
+
+void drop_config() { Blend_StringMap_drop(CONFIG.types, TypeConfig_drop); }
+
+char *Blend_asprintf(const char *fmt, ...) {
+  va_list va1, va2;
+  va_start(va1, fmt);
+  va_copy(va2, va1);
+  int res = vsnprintf(NULL, 0, fmt, va1);
+  va_end(va1);
+  if (res < 0) {
+    panic("failed to vsnprintf");
+  }
+  size_t buf_len = res + 1;
+  char *result = try_raw_malloc(buf_len);
+  vsnprintf(result, buf_len, fmt, va1);
+  va_end(va2);
+  return result;
+}
+
+void init_qualifiers(FILE *out, Blend_Type_Qualifiers qualifiers) {
+  fprintf(out, "(Blend_Type_Qualifiers){");
+  fprintf(out, ".ptr_order = %zu,", qualifiers.ptr_order);
+  if (qualifiers.is_fn) {
+    fprintf(out, ".is_fn = true,");
+  } else {
+    fprintf(out, ".is_fn = false,");
+  }
+  fprintf(out, ".array_order = %zu,", qualifiers.array_order);
+  fprintf(out, ".array_len = {");
+  for (size_t i = 0; i < qualifiers.array_order; i++) {
+    if (i != 0) {
+      fprintf(out, ",");
+    }
+    fprintf(out, "%zu", qualifiers.array_len[i]);
+  }
+  fprintf(out, "},");
+  fprintf(out, "}");
+}
+void init_full_type(FILE *out, Blend_Full_Type type) {
+  fprintf(out, "(Blend_Full_Type) {");
+  fprintf(out, ".qualifiers = ");
+  init_qualifiers(out, type.qualifiers);
+  fprintf(out, ",");
+  fprintf(out,
+          ".inner = Blend_find_type(\\((@current Ctx)^.raw), "
+          "Blend_String_of_c(\"%s\")),",
+          type.inner->name);
+  fprintf(out, "}");
+}
+
+void init_kast_from_obj(FILE *out, FieldConfig *field_config,
+                        Blend_Full_Type type, const char *obj) {
+  if (field_config != NULL) {
+    if (field_config->double_linked_list_node_type != NULL) {
+      Blend_Full_Type node_ptr_type = {
+          .inner = field_config->double_linked_list_node_type,
+          .qualifiers =
+              {
+                  .is_fn = 0,
+                  .ptr_order = 1,
+                  .array_order = 0,
+              },
+      };
+      fprintf(out, "{");
+      fprintf(out, ".first=(let p=Obj.field(%s, \"first\");", obj);
+      init_kast_from_obj(out, NULL, node_ptr_type, "p");
+      fprintf(out, "),");
+      fprintf(out, ".last=(let p=Obj.field(%s, \"last\");", obj);
+      init_kast_from_obj(out, NULL, node_ptr_type, "p");
+      fprintf(out, "),");
+      fprintf(out, "}");
+      return;
+    }
+  }
+  if (type.qualifiers.array_order == 1 && type.qualifiers.ptr_order == 0 &&
+      strcmp(type.inner->name, "char") == 0) {
+    fprintf(out,
+            "@native ''(StringView){"
+            ".buf=\\(%s).data,"
+            ".length=strnlen(\\(%s).data,%zu),"
+            "}''",
+            obj, obj, type.qualifiers.array_len[0]);
+    return;
+  }
+  if (type.qualifiers.array_order > 0) {
+    fprintf(out, "Array_from_blend[_, %zu](%s, e => ",
+            type.qualifiers.array_len[0], obj);
+    Blend_Full_Type element_type = array_element_type(type);
+    init_kast_from_obj(out, NULL, element_type, "e");
+    fprintf(out, ")");
+    return;
+  }
+  if (type.qualifiers.ptr_order > 0) {
+    fprintf(out, "ref_from_blend(%s, @native ''", obj);
+    init_full_type(out, pointed_type(type));
+    fprintf(out, "'', o => ");
+    init_kast_from_obj(out, NULL, pointed_type(type), "o");
+    fprintf(out, ")");
+    return;
+  }
+  fprintf(out, "(%s as BlendType).from_blend(%s)", type.inner->name, obj);
+}
+
+bool should_ignore_field(FieldConfig *field_config, Blend_Type_Field *field) {
+  if (field_config != NULL) {
+    return false;
+  }
+  if (field->name.s[0] == '_') {
+    return true;
+  }
+  if (Blend_StringMap_get(CONFIG.types,
+                          Blend_String_of_c(field->type.inner->name)) == NULL) {
+    return true;
+  }
+  return false;
+}
+
+void insert_panic_handler(FILE *out, const char *fmt, ...) {
+  fprintf(out, "            ");
+  fprintf(out,
+          "let parent_hanic_handler = (@current std.PanicHandler).handle;\n");
+  fprintf(out, "            ");
+  fprintf(out, "with std.PanicHandler = { .handle = (s :: &str) => "
+               "parent_hanic_handler(&format!(\"");
+  va_list va;
+  va_start(va, fmt);
+  vfprintf(out, fmt, va);
+  va_end(va);
+  fprintf(out, ": \\(s)\") |> as_str) };\n");
+}
+
 void generate_Type_bindings(FILE *out, Blend_Type *type) {
+  TypeConfig *type_config =
+      Blend_StringMap_get(CONFIG.types, Blend_String_of_c(type->name));
   fprintf(out, "const %s = ", type->name);
   if (type->struct_def != NULL) {
     fprintf(out, "newtype {\n");
     Blend_Struct *def = type->struct_def;
     for (size_t i = 0; i < def->fields_len; i++) {
       Blend_Type_Field *field = &def->fields[i];
+      FieldConfig *field_config = NULL;
+      if (type_config != NULL) {
+        field_config = Blend_StringMap_get(type_config->fields, field->name);
+      }
       if (field->type.qualifiers.is_fn) {
         continue;
       }
-      fprintf(out, "    .");
+      fprintf(out, "    ");
+      if (should_ignore_field(field_config, field)) {
+        fprintf(out, "# ");
+      }
+      fprintf(out, ".");
       Blend_String_dump(out, kast_ident(field->name));
       fprintf(out, " :: ");
-      write_as_kast_type(out, field->type);
+      if (field_config != NULL &&
+          field_config->double_linked_list_node_type != NULL) {
+        fprintf(out, "DoubleLinkedList[%s]",
+                field_config->double_linked_list_node_type->name);
+      } else {
+        write_as_kast_type(out, field->type);
+      }
       fprintf(out, ",\n");
     }
     fprintf(out, "}");
   } else {
-    // typedef struct name name;
-    fprintf(out, "@opaque_type \"struct %s\"", type->name);
+    // typedef strutruect name name;
+    fprintf(out, "@opaque_type \"%s\"", type->name);
   }
   fprintf(out, ";\n");
+  fprintf(out, "impl %s as BlendType = {\n", type->name);
+  fprintf(out, "    .name = \"%s\",\n", type->name);
+  fprintf(out, "    .from_blend = obj => ");
+  if (type->struct_def != NULL) {
+    fprintf(out, "{\n");
+    Blend_Struct *def = type->struct_def;
+    for (size_t i = 0; i < def->fields_len; i++) {
+      Blend_Type_Field *field = &def->fields[i];
+      if (field->type.qualifiers.is_fn) {
+        continue;
+      }
+      FieldConfig *field_config = NULL;
+      if (type_config != NULL) {
+        field_config = Blend_StringMap_get(type_config->fields, field->name);
+      }
+      if (should_ignore_field(field_config, field)) {
+        continue;
+      }
+      fprintf(out, "        ");
+      fprintf(out, ".");
+      Blend_String_dump(out, kast_ident(field->name));
+      fprintf(out, " = (\n");
+      insert_panic_handler(out, "%s.%.*s", type->name, (int)field->name.length,
+                           field->name.s);
+      fprintf(out, "            ");
+      fprintf(out, "let field = Obj.field(obj, \"");
+      Blend_String_dump(out, field->name);
+      fprintf(out, "\");\n");
+      fprintf(out, "            ");
+      init_kast_from_obj(out, field_config, field->type, "field");
+      fprintf(out, "\n        ),\n");
+    }
+    fprintf(out, "    }");
+  } else {
+    fprintf(out, "@native ''*(%s*)\\(obj).data''", type->name);
+  }
+  fprintf(out, ",\n");
+  fprintf(out, "};\n");
 }
 
 char *dirname(const char *path) {
@@ -838,11 +1229,63 @@ char *path_concat(const char *a, const char *b) {
 }
 
 void Blend_generate_bindings(Blend *blend, FILE *out) {
-  const char *prefix_path = "blend-parser/bindings_prefix.ks";
-  Blend_String prefix_content = read_file_to_end(prefix_path);
-  Blend_String_dump(out, prefix_content);
-  free((void *)prefix_content.s);
+  init_config(blend);
   for (size_t i = 0; i < blend->dna.types_len; i++) {
-    generate_Type_bindings(out, &blend->dna.types[i]);
+    Blend_Type *type = &blend->dna.types[i];
+    Blend_String type_name = Blend_String_of_c(type->name);
+    if (Blend_StringMap_get(CONFIG.types, type_name) != NULL) {
+      generate_Type_bindings(out, type);
+    }
   }
+  drop_config();
+}
+
+struct Blend_StringMap {
+  void *value;
+  Blend_StringMap *next[256];
+};
+Blend_StringMap *Blend_StringMap_new() {
+  Blend_StringMap *map;
+  try_malloc(map);
+  *map = (Blend_StringMap){
+      .value = NULL,
+      .next = {0},
+  };
+  return map;
+};
+Blend_StringMap *Blend_StringMap_get_or_init_next(Blend_StringMap *map,
+                                                  char c) {
+  if (map->next[c] == NULL) {
+    map->next[c] = Blend_StringMap_new();
+  }
+  return map->next[c];
+}
+void Blend_StringMap_add(Blend_StringMap *map, Blend_String key, void *value) {
+  for (size_t i = 0; i < key.length; i++) {
+    char c = key.s[i];
+    map = Blend_StringMap_get_or_init_next(map, c);
+  }
+  map->value = value;
+}
+void *Blend_StringMap_get(Blend_StringMap *map, Blend_String key) {
+  for (size_t i = 0; map != NULL && i < key.length; i++) {
+    char c = key.s[i];
+    map = map->next[c];
+  }
+  if (map == NULL) {
+    return NULL;
+  }
+  return map->value;
+}
+void Blend_StringMap_drop(Blend_StringMap *map, void (*drop_value)(void *)) {
+  if (map == NULL) {
+    return;
+  }
+  if (map->value != NULL) {
+    drop_value(map->value);
+  }
+  for (size_t i = 0; i < 256; i++) {
+    Blend_StringMap_drop(map->next[i], drop_value);
+  }
+  free(map);
 }
