@@ -18,7 +18,7 @@ const parse = () -> Args => with_return (
         .vsync = true,
     };
     if is_emscripten() then (
-        result.connect = :Some default_address;
+        result.connect = :Some String.from_str(&default_address |> as_str);
         return result;
     );
     let mut i = 1;
@@ -51,7 +51,7 @@ const parse = () -> Args => with_return (
         panic_fmt!("Unexpected arg \(arg)");
     );
     if { &result.server, &result.connect } is { &(:None), &(:None) } then (
-        result.connect = :Some default_address;
+        result.connect = :Some String.from_str(&default_address |> as_str);
     );
     result
 );

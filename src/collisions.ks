@@ -106,8 +106,15 @@ impl Mesh as module = (
                 ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             for co in chunk_box(from, to) do (
-                let chunk = &mut chunks |> OrdMap.get_or_init(co, Chunk.new);
-                &mut chunk^.faces |> ArrayList.push_back(face);
+                let chunk_center = Vec3.mul({
+                    Int32_to_Float32(co.0) + 0.5,
+                    Int32_to_Float32(co.1) + 0.5,
+                    Int32_to_Float32(co.2) + 0.5,
+                }, CHUNK_SIZE);
+                if distance_to_face(chunk_center, &face).distance |> abs < CHUNK_SIZE then (
+                    let chunk = &mut chunks |> OrdMap.get_or_init(co, Chunk.new);
+                    &mut chunk^.faces |> ArrayList.push_back(face);
+                );
             );
         );
         { .faces, .chunks }
@@ -120,46 +127,60 @@ const update = (result :: &mut Collision, collision :: Collision) => (
     );
 );
 
-const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face) => (
-    for i in 0..3 do (
-        let p = Face_get_v(face, i);
-        let dv = Vec3.sub(entity.position, p);
-        let len = Vec3.length(dv);
-        if len < entity.radius then (
-            update(result, { .penetration = entity.radius - len, .normal = Vec3.normalize(dv) });
+const distance_to_face = (
+    point :: Vec3,
+    face :: &Face,
+) -> { .normal :: Vec3, .distance :: Float32 } => (
+    let mut result = :None;
+    let update = (.normal, .distance) => (
+        let better = match result with (
+            | :None => true
+            | :Some result => distance < result.distance
         );
+        if better then (
+            result = :Some { .normal, .distance };
+        );
+    );
+    for i in 0..3 do (
+        let face_p = Face_get_v(face, i);
+        let dv = Vec3.sub(point, face_p);
+        let distance = Vec3.length(dv);
+        update(.distance, .normal = Vec3.normalize_or_zero(dv));
     );
     for i in 0..3 do (
         let a = face |> Face_get_v(i);
         let b = face |> Face_get_v((i + 1) % 3);
-        if Vec3.dot(Vec3.sub(b, a), Vec3.sub(entity.position, a)) <= 0 then (
+        if Vec3.dot(Vec3.sub(b, a), Vec3.sub(point, a)) <= 0 then (
             continue;
         );
-        if Vec3.dot(Vec3.sub(a, b), Vec3.sub(entity.position, b)) <= 0 then (
+        if Vec3.dot(Vec3.sub(a, b), Vec3.sub(point, b)) <= 0 then (
             continue;
         );
         let v = Vec3.normalize(Vec3.sub(b, a));
-        let t = Vec3.dot(Vec3.sub(entity.position, a), v);
+        let t = Vec3.dot(Vec3.sub(point, a), v);
         let closest_point = Vec3.add(a, Vec3.mul(v, t));
-        let delta = Vec3.sub(entity.position, closest_point);
-        let length = Vec3.length(delta);
-        if length < entity.radius then (
-            update(result, { .penetration = entity.radius - length, .normal = Vec3.normalize(delta) });
-        );
+        let delta = Vec3.sub(point, closest_point);
+        update(.distance = Vec3.length(delta), .normal = Vec3.normalize_or_zero(delta))
     );
-    let d = Vec3.dot(Vec3.sub(entity.position, face^.vs.0), face^.normal);
-    if 0 < d and d < entity.radius then (
-        let closest_point = Vec3.sub(entity.position, Vec3.mul(face^.normal, d));
-        with_return (
-            for i in 0..3 do (
-                let a = face |> Face_get_v(i);
-                let b = face |> Face_get_v((i + 1) % 3);
-                if Vec3.dot(Vec3.cross(face^.normal, Vec3.sub(b, a)), Vec3.sub(closest_point, a)) < 0 then (
-                    return;
-                );
+    let distance = Vec3.dot(Vec3.sub(point, face^.vs.0), face^.normal);
+    let closest_point = Vec3.sub(point, Vec3.mul(face^.normal, distance));
+    with_return (
+        for i in 0..3 do (
+            let a = face |> Face_get_v(i);
+            let b = face |> Face_get_v((i + 1) % 3);
+            if Vec3.dot(Vec3.cross(face^.normal, Vec3.sub(b, a)), Vec3.sub(closest_point, a)) < 0 then (
+                return;
             );
-            update(result, { .penetration = entity.radius - d, .normal = face^.normal });
         );
+        update(.distance, .normal = face^.normal);
+    );
+    result |> Option.unwrap
+);
+
+const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face) => (
+    let { .normal, .distance } = distance_to_face(entity.position, face);
+    if 0 < distance and distance < entity.radius then (
+        update(result, { .penetration = entity.radius - distance, .normal });
     );
 );
 
