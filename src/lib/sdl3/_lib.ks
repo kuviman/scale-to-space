@@ -372,8 +372,7 @@ const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
         let &@context = &mut context;
         let app_impl = STORE_APP_IMPL |> Option.unwrap;
         let app_impl :: &App[A] = @native "\(app_impl)";
-        let app_impl = app_impl^;
-        let mut initialized_app = Box_new(app_impl.init());
+        let mut initialized_app = Box_new(app_impl^.init());
         @native "*\(app_state) = (void*) \(Box_leak(initialized_app))";
         @native "SDL_APP_CONTINUE"
     );
@@ -401,9 +400,8 @@ const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
         let &@context = &mut context;
         let app_impl = STORE_APP_IMPL |> Option.unwrap;
         let app_impl :: &App[A] = @native "\(app_impl)";
-        let app_impl = app_impl^;
         let app_state :: &mut A = @native "\(app_state)";
-        app_impl.event(app_state, event)
+        app_impl^.event(app_state, event)
             |> AppResult.into_raw
     );
     const quit_callback = [A] fn @call "C" (
@@ -416,14 +414,13 @@ const EnterAppMainCallbacks = [A :: Type] (app_impl :: App[A]) => (
         let &@context = &mut context;
         let app_impl = STORE_APP_IMPL |> Option.unwrap;
         let app_impl :: &App[A] = @native "\(app_impl)";
-        let app_impl = app_impl^;
-        let app_state :: &mut A = @native "\(app_state)";
-        app_impl.quit(app_state^, result |> AppResult.from_raw);
+        let app_state :: Box[A] = @native "Box_\(type A)_from_raw(\(app_state), \(A))";
+        app_impl^.quit(app_state^, result |> AppResult.from_raw);
     );
     @native ''
         SDL_EnterAppMainCallbacks(
             CLI_ARGS.argc,
-            CLI_ARGS.original_argv,
+            (char**)CLI_ARGS.original_argv,
             \(init_callback[A]),
             \(iterate_callback[A]),
             \(event_callback[A]),

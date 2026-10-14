@@ -64,7 +64,7 @@ impl Vec2 as module = (
         div(v, length(v))
     );
 
-    const arg = (v :: Vec2) -> Angle => (
-        { .radians = math.atan2(v.1, v.0) }
+    const arg = ({ x, y } :: Vec2) -> Angle => (
+        { .radians = math.atan2(y, x) }
     );
 );

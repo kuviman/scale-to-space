@@ -20,6 +20,7 @@
         pkgs = import inputs.nixpkgs { inherit system; };
         emscripten = pkgs-25-11.emscripten;
         kast = inputs.kast.packages.${system}.default;
+        kast-c-runtime = inputs.kast.packages.${system}.c-runtime;
         kast-selfhost = pkgs.writeShellApplication {
           name = "kast";
           runtimeInputs = [ pkgs.nodejs ];
@@ -227,6 +228,7 @@
           glew
           libbacktrace
           libunwind
+          kast-c-runtime
         ];
       in
       {
@@ -264,7 +266,6 @@
               LIBRARY_PATH = pkgs.lib.makeSearchPath "lib" c_libs;
               CPATH = pkgs.lib.makeSearchPath "include" c_libs;
               CLANGD_FLAGS = "--query-driver=${clang}/bin/clang*";
-              KAST_PATH = "./kast_path";
               SDL3_WEB = "${sdl3-web}";
               SDL3_IMAGE_WEB = "${sdl3-image-web}";
               SDL3_MIXER_WEB = "${sdl3-mixer-web}";

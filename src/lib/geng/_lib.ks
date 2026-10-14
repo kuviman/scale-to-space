@@ -247,26 +247,28 @@ const run = [G :: Type] () => (
             self^.geng_ctx.gl_context = @current gl.Context;
             :Continue
         ),
-        .event = (self, &event) => with_return (
+        .event = (self, &event) => (
             with geng.Context = self^.geng_ctx;
             with gl.Context = self^.geng_ctx.gl_context;
             with geng.input.Context = self^.input;
             with geng.audio.Context = self^.audio;
-            if geng.input.convert(event) is :Some event then (
-                if event is :Quit then (
-                    return :Success;
+            let result = with_return (
+                if geng.input.convert(event) is :Some event then (
+                    if event is :Quit then (
+                        return :Success;
+                    );
+                    (G as App).handle_event(&mut self^.game, event);
                 );
-                (G as App).handle_event(&mut self^.game, event);
+                :Continue
             );
             # TODO moving ownership back here should be done differently
             self^.audio = @current geng.audio.Context;
             self^.input = @current geng.input.Context;
             self^.geng_ctx = @current geng.Context;
             self^.geng_ctx.gl_context = @current gl.Context;
-            :Continue
+            result
         ),
         .quit = (mut self, result) => (
-            @native "Kast_dump_allocation_stats()";
             let self = &mut self;
             with geng.Context = self^.geng_ctx;
             with gl.Context = self^.geng_ctx.gl_context;

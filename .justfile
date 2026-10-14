@@ -9,15 +9,18 @@ build-c source="src/main.ks":
     # --c-debug true \
 
 [arg("sanitize", long, value="true")]
+[arg("use-local-kast", long, value="true")]
 [arg("opt_level", short="O")]
-build-native source="target/compiled/main.c" opt_level="0" sanitize="":
+build-native source="target/compiled/main.c" opt_level="0" sanitize="" use-local-kast="":
     ${CC:-gcc} \
         blend-parser/blend.c \
         {{source}} \
         -o target/compiled/main.exe \
+        {{ if use-local-kast == "true" { "-I/home/kuviman/projects/kast-lang/bootstrap/c-runtime/include" } else { "" } }} \
+        {{ if use-local-kast == "true" { "-L/home/kuviman/projects/kast-lang/bootstrap/c-runtime/lib" } else { "" } }} \
         -I. \
         -pthread \
-        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
+        -lkast -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         {{ if sanitize == "true" { "-fsanitize=address,leak,undefined" } else { "" } }} \
         -Wfatal-errors \
         -g -O{{opt_level}}
