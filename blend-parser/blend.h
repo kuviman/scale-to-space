@@ -78,7 +78,7 @@ typedef struct {
 typedef struct {
   char code[4];
   const uint8_t *body;
-  uint sdna_index;
+  size_t sdna_index;
   const uint8_t *old;
   Blend_Type *type;
   size_t count;

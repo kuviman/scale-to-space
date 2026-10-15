@@ -1,16 +1,18 @@
 default:
     echo "Hi"
 
-build-c source="src/main.ks":
+build-c source="src/main.ks" output="target/compiled/main.c":
+    mkdir -p $(dirname {{output}})
+    echo "#define SDL_MAIN_HANDLED 1" > {{output}}
     ${KASTC:-kastc} compile \
         --target c \
-        --output target/compiled/main.c \
-        {{source}}
+        {{source}} \
+        >> {{output}}
     # --c-debug true \
 
 [arg("sanitize", long, value="true")]
 [arg("opt_level", short="O")]
-build-native source="target/compiled/main.c" opt_level="0" sanitize="":
+build-native source="target/compiled/main.c" opt_level="1" sanitize="":
     #!/usr/bin/env bash
     if [ -z "$KAST_PATH" ]; then
         KAST_ARGS="-lkast"
@@ -37,6 +39,8 @@ build-windows-do source:
         -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore \
         -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lbacktrace -lpthread \
         -lglew32 -lglu32 -lopengl32 \
+        -I${KAST_PATH}/c-runtime/include \
+        ${KAST_PATH}/c-runtime/src/*.c \
         blend-parser/blend.c \
         {{source}} \
         -o target/compiled/main.exe \
@@ -51,8 +55,8 @@ build-windows-do source:
 build-win:
     nix build '.?submodules=1#game-win'
 
-run-win:
-    just build-win && wine result/bin/ScaleToSpace.exe
+run-win *args:
+    just build-win && wine result/bin/ScaleToSpace.exe {{args}}
 
 build-emscripten source="target/compiled/main.c":
     rm -rf target/web

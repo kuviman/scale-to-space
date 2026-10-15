@@ -204,6 +204,7 @@
           src = nix-filter {
             root = ./.;
             include = [
+              "blend-parser"
               "net"
               ".justfile"
               "assets"
@@ -211,7 +212,7 @@
           };
           buildPhase = ''
             mkdir -p target/compiled
-            just build-windows-do ${game-c-source}/main.c
+            KAST_PATH=${inputs.kast} just build-windows-do ${game-c-source}/main.c
           '';
           installPhase = ''
             set -e
