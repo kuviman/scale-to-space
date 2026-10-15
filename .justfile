@@ -9,18 +9,23 @@ build-c source="src/main.ks":
     # --c-debug true \
 
 [arg("sanitize", long, value="true")]
-[arg("use-local-kast", long, value="true")]
 [arg("opt_level", short="O")]
-build-native source="target/compiled/main.c" opt_level="0" sanitize="" use-local-kast="":
+build-native source="target/compiled/main.c" opt_level="0" sanitize="":
+    #!/usr/bin/env bash
+    if [ -z "$KAST_PATH" ]; then
+        KAST_ARGS="-lkast"
+    else
+        KAST_ARGS="-I${KAST_PATH}/c-runtime/include"
+        KAST_ARGS="$KAST_ARGS ${KAST_PATH}/c-runtime/src/*.c"
+    fi
     ${CC:-gcc} \
         blend-parser/blend.c \
         {{source}} \
         -o target/compiled/main.exe \
-        {{ if use-local-kast == "true" { "-I/home/kuviman/projects/kast-lang/bootstrap/c-runtime/include" } else { "" } }} \
-        {{ if use-local-kast == "true" { "-L/home/kuviman/projects/kast-lang/bootstrap/c-runtime/lib" } else { "" } }} \
+        $KAST_ARGS \
         -I. \
         -pthread \
-        -lkast -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
+        -lm -lSDL3 -lSDL3_image -lSDL3_mixer -lGL -lGLEW -lbacktrace \
         {{ if sanitize == "true" { "-fsanitize=address,leak,undefined" } else { "" } }} \
         -Wfatal-errors \
         -g -O{{opt_level}}
@@ -107,6 +112,8 @@ build-podman:
     podman build -t notnix .
     podman run -it \
         -e CC=$CC \
+        -v $HOME/projects/kast-lang/bootstrap:/kast:ro \
+        -e KAST_PATH=/kast \
         -v $(pwd):/src -w /src \
         notnix \
         just build-native
