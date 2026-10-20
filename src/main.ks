@@ -1,4 +1,4 @@
-use (import "lib/_lib.ks").*;
+use (import "./__deps__.ks").*;
 use (import "./assets.ks").*;
 use (import "./model.ks").*;
 
@@ -210,7 +210,7 @@ impl Entity as module = (
                     (entity^.scale - entity^.min_scale) / (entity^.max_scale - entity^.min_scale)
                 );
                 let sfx = geng.audio.play_with(
-                    if scale_dir > 0 then self^.assets.sfx.inflation else self^.assets.sfx.deflation,
+                    if scale_dir > 0 then &self^.assets.sfx.inflation else &self^.assets.sfx.deflation,
                     { .volume = volume * 0.3, .@"loop" = false },
                 );
                 self^.flate_sfx = :Some { sfx, .dir = scale_dir };
@@ -269,7 +269,7 @@ impl Entity as module = (
                 if jet^.active then (
                     if jet^.sfx is :None then (
                         let sfx = geng.audio.play_with(
-                            self^.assets.powers.jetpack.sfx,
+                            &self^.assets.powers.jetpack.sfx,
                             { .volume = 0.6, .@"loop" = false },
                         );
                         jet^.sfx = :Some sfx;
@@ -688,7 +688,7 @@ const update_step = (
                 &mut self^.particles |> ArrayList.push_back(particle);
             );
             geng.audio.play_with(
-                self^.assets.sfx.splash,
+                &self^.assets.sfx.splash,
                 { .volume, .@"loop" = false },
             );
         );
@@ -764,7 +764,7 @@ const update_step = (
                     &mut self^.particles |> ArrayList.push_back(particle);
                 );
                 geng.audio.play_with(
-                    level_model^.sfx,
+                    &level_model^.sfx,
                     { .volume, .@"loop" = false },
                 );
             );
@@ -813,7 +813,7 @@ const handle_mmo = (self :: &mut Game) => (
                 self^.server_meta = meta;
             )
             | :BeachballScored { .who } => (
-                geng.audio.play(self^.assets.sfx.score);
+                geng.audio.play(&self^.assets.sfx.score);
             )
             | :UpdatePlayer { .id, .data } => (
                 let player = &mut self^.other_players
@@ -886,7 +886,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .distance = 5,
                     .attack = Angle.from_degrees(0),
                     .rotation = Angle.from_degrees(0),
-                    .fov = Angle.from_degrees(90),
+                    .fov = :Vertical Angle.from_degrees(90),
                 },
                 .dragon_scales = respawn_dragon_scales(),
                 .next_send = 0,
@@ -906,7 +906,7 @@ const handle_mmo = (self :: &mut Game) => (
                 .fps_counter = FpsCounter.new(),
                 .cheated = false,
                 .flate_sfx = :None,
-                .jetpack_sfx = geng.audio.play_with(assets.sfx.jetpack, { .volume = 0, .@"loop" = true }),
+                .jetpack_sfx = geng.audio.play_with(&assets.sfx.jetpack, { .volume = 0, .@"loop" = true }),
                 .timer = :WaitForMove,
                 .sens = 1,
                 .next_physics = 0,
@@ -1011,10 +1011,12 @@ const handle_mmo = (self :: &mut Game) => (
             let height = 12;
             let distance = 8;
 
+            let font = &(@current geng.Context).font;
+
             let linksider_pos :: Vec3 = { 406.587189, -9.395210, 13 };
             if Vec3.length(Vec3.sub(self^.player.position, linksider_pos)) < 20 then (
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "wishlist LinkSider on steam",
                     .matrix = Mat4.translate(linksider_pos)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-120)))
@@ -1026,8 +1028,8 @@ const handle_mmo = (self :: &mut Game) => (
 
             if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < 20 then (
                 let distance = 25;
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Scale to Space",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-90)))
@@ -1038,8 +1040,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "made for Down2Jam 4",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-90)))
@@ -1049,8 +1051,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "kuviman - programming, sfx",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-90)))
@@ -1060,8 +1062,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "rickylee - level design, modeling",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-90)))
@@ -1071,8 +1073,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "badcop - multiplayer",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-10)))
@@ -1083,8 +1085,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "howlingaf - consulting",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-10)))
@@ -1095,8 +1097,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "vesdev - music",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-170)))
@@ -1107,8 +1109,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Martin_Lutter - trumpet sfx",
                     .matrix = Mat4.translate(FINISH)
                         |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(-170)))
@@ -1122,8 +1124,8 @@ const handle_mmo = (self :: &mut Game) => (
             );
 
             if Vec3.length(self^.player.position) < 40 then (
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Scale to Space",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(-90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance * 2, height + 6 }))
@@ -1132,8 +1134,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "WASD to ROLL",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(-90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 0.5}))
@@ -1141,8 +1143,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Mouse to LOOK",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(-90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height - 0.5}))
@@ -1150,8 +1152,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "PageUp/PageDown to change sens",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(-90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height - 1.5}))
@@ -1160,8 +1162,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "P to cycle POSTJAM power",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 4}))
@@ -1169,8 +1171,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "RMB to use POSTJAM power",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 3}))
@@ -1178,8 +1180,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "R to RESTART",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 0.5}))
@@ -1187,8 +1189,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "F to CHEAT",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(10))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height - 0.5}))
@@ -1196,8 +1198,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Left/Right to CHANGE SKIN",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height + 0.5}))
@@ -1205,8 +1207,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "12345 to emote",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(90))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height - 0.5}))
@@ -1214,8 +1216,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .color = { 0, 0, 0, 1 },
                     .align = 0.5,
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "Space to SCALE",
                     .matrix = Mat4.rotate_z(Angle.from_degrees(-170))
                         |> Mat4.mul_mat(Mat4.translate({ 0, distance, height}))
@@ -1224,8 +1226,8 @@ const handle_mmo = (self :: &mut Game) => (
                     .align = 0.5,
                 );
             );
-            font.Font.draw(
-                &self^.assets.font,
+            geng.Font.draw(
+                font,
                 &format!("\(self^.server_meta.score.0):\(self^.server_meta.score.1)")
                     |> as_str,
                 .matrix = Mat4.translate({ -67.035286, -176.572922, 30.826015 })
@@ -1240,14 +1242,14 @@ const handle_mmo = (self :: &mut Game) => (
                     .position = { 0, 0, 0 },
                     .rotation = Angle.from_degrees(90),
                     .attack = Angle.from_degrees(90),
-                    .fov = Angle.from_degrees(90),
+                    .fov = :Vertical Angle.from_degrees(90),
                     .distance = 10,
                 },
                 .framebuffer_size = geng.get_window_size(),
             );
             if not self^.connected then (
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     "disconnected",
                     .matrix = Mat4.translate({ 0, 9.2, 0}),
                     .color = {1, 0, 0, 1},
@@ -1262,16 +1264,16 @@ const handle_mmo = (self :: &mut Game) => (
                 );
                 let color = if self^.cheated then { 1, 0, 0, 1 } else { 0, 0, 0, 1 };
                 if self^.timer is :Win _ then (
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         "YOU HAVE SCALED THE MOUNTAIN",
                         .matrix = Mat4.translate({ 0, 5, 0})
                             |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(10))),
                         .color,
                         .align = 0.5,
                     );
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         &format!("\(collected_scales) dragon scales collected")
                             |> as_str,
                         .matrix = Mat4.translate({ 0, -1, 0}),
@@ -1279,8 +1281,8 @@ const handle_mmo = (self :: &mut Game) => (
                         .align = 0.5,
                     );
                     if self^.cheated then (
-                        font.Font.draw(
-                            &self^.assets.font,
+                        geng.Font.draw(
+                            font,
                             "with cheats",
                             .matrix = Mat4.translate({ 0, 4, 0}),
                             .color,
@@ -1288,8 +1290,8 @@ const handle_mmo = (self :: &mut Game) => (
                         );
                     );
 
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         "press H to hide",
                         .matrix = Mat4.translate({ 0, 2, 0}),
                         .color,
@@ -1297,8 +1299,8 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                 );
                 if time is :Some t then (
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         &(
                             let seconds :: Int32 = @native "\(t)";
                             let minutes = seconds / 60;
@@ -1324,8 +1326,8 @@ const handle_mmo = (self :: &mut Game) => (
                         | :Antigravity _ => "antigravity"
                         | :BeachballVertical _ => "beachball vertical hit"
                     );
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         &format!("postjam power: \(power_text)")
                             |> as_str,
                         .matrix = Mat4.translate({ 2, -9.5, 0})
@@ -1339,8 +1341,8 @@ const handle_mmo = (self :: &mut Game) => (
                         | :RelativeToCamera => return
                         | :RelativeToFace => "controls relative to face"
                     );
-                    font.Font.draw(
-                        &self^.assets.font,
+                    geng.Font.draw(
+                        font,
                         text,
                         .matrix = Mat4.translate({ 2, -8.5, 0})
                             |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
@@ -1348,8 +1350,8 @@ const handle_mmo = (self :: &mut Game) => (
                         .align = 0,
                     );
                 );
-                font.Font.draw(
-                    &self^.assets.font,
+                geng.Font.draw(
+                    font,
                     &format!("FPS: \(fps)")
                         |> as_str,
                     .matrix = Mat4.translate({ -2, -9.5, 0})
@@ -1444,7 +1446,7 @@ const handle_mmo = (self :: &mut Game) => (
                 for scale in &mut self^.dragon_scales |> ArrayList.iter_mut do (
                     if scale^.collected then continue;
                     if Vec3.length(Vec3.sub(self^.player.position, scale^.position)) < self^.player.scale + 1 then (
-                        geng.audio.play(self^.assets.sfx.collect);
+                        geng.audio.play(&self^.assets.sfx.collect);
                         scale^.collected = true;
                         for (_ :: Int32) in 0..10 do (
                             const rng = () => std.random.gen_range(.min = -1, .max = 1);
@@ -1473,7 +1475,7 @@ const handle_mmo = (self :: &mut Game) => (
             geng.audio.Effect.set_volume(self^.jetpack_sfx, if self^.jetpack_enabled then 0.5 else 0);
             if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < self^.player.scale then (
                 if self^.timer is :Working t then (
-                    geng.audio.play(self^.assets.sfx.win);
+                    geng.audio.play(&self^.assets.sfx.win);
                     badcop.beat_game(Float32_to_Int32(t));
                     self^.timer = :Win t;
                 );
@@ -1614,7 +1616,7 @@ const handle_mmo = (self :: &mut Game) => (
                     let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
                     if volume > 0.1 then (
                         geng.audio.play_with(
-                            self^.assets.sfx.volleyball,
+                            &self^.assets.sfx.volleyball,
                             { .volume, .@"loop" = false },
                         );
                     );
@@ -1715,7 +1717,7 @@ const handle_mmo = (self :: &mut Game) => (
                         self^.player.power = :BeachballVertical { .active = false };
                     ) else panic("TOO BIG POWER INDEX");
                 )
-                | :MousePress _ => (
+                | :PointerPress _ => (
                     SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);
                 )
                 | :MouseMove { .delta, ... } => (
@@ -1764,5 +1766,8 @@ if args.connect is :Some address then (
     badcop.set_name("<todo name>");
     # let c = client.connect(address);
     # with client.Ctx = c;
-    geng.run[Game]();
+    geng.run[Game](
+        .title = "Scale to Space",
+        .vsync = args.vsync,
+    );
 );

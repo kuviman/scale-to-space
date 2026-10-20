@@ -1,4 +1,4 @@
-use (import "../src/lib/_lib.ks").*;
+use (import "../src/__deps__.ks").*;
 
 module:
 

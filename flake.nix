@@ -4,9 +4,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-25-11.url = "github:NixOS/nixpkgs/nixos-25.11";
-    kast.url = "github:kast-lang/kast/bootstrap-ocaml";
-    kast-selfhost.url = "git+https://github.com/kast-lang/kast?rev=9cbd998cdb9adf1e3b25cf9599f1e26743f80016&submodules=1";
-    # kast.url = "git+file:/home/kuviman/projects/kast-lang/kast";
+    # geng.url = "git+https://github.com/kast-lang/geng?submodules=1";
+    geng.url = "git+file:///home/kuviman/projects/kast-lang/geng?submodules=1";
     flake-utils.url = "github:numtide/flake-utils";
     nix-filter.url = "github:numtide/nix-filter";
   };
@@ -19,85 +18,7 @@
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
         pkgs = import inputs.nixpkgs { inherit system; };
         emscripten = pkgs-25-11.emscripten;
-        kast = inputs.kast.packages.${system}.default;
-        kast-c-runtime = inputs.kast.packages.${system}.c-runtime;
-        kast-selfhost = pkgs.writeShellApplication {
-          name = "kast";
-          runtimeInputs = [ pkgs.nodejs ];
-          text = ''
-            node ${inputs.kast-selfhost.packages.${system}.kast-js}/kast.mjs "$@"
-          '';
-        };
         clang = pkgs.clang_22;
-        # clang = pkgs.clang;
-        sdl3-web = with pkgs-25-11;
-          stdenv.mkDerivation {
-            name = "sdl3-web";
-            src = fetchFromGitHub {
-              owner = "libsdl-org";
-              repo = "SDL";
-              rev = "release-3.4.14";
-              hash = "sha256-HzV5Fq+PhJr/dQBCVm2WL1BdaI4GG+W+B0scttjdRuQ=";
-            };
-            buildInputs = [
-              emscripten
-              cmake
-            ];
-            dontUseCmakeConfigure = true;
-            buildPhase = ''
-              emcmake cmake .
-              emmake make
-            '';
-            installPhase = ''
-              cmake --install . --prefix $out
-            '';
-          };
-        sdl3-image-web = with pkgs-25-11;
-          stdenv.mkDerivation {
-            name = "sdl3-image-web";
-            src = fetchFromGitHub {
-              owner = "libsdl-org";
-              repo = "SDL_image";
-              rev = "release-3.4.4";
-              hash = "sha256-ttnoe9bTtA8+eUMOs55v58xb+cWpNEiiTDEeX9GBxaw=";
-            };
-            buildInputs = [
-              emscripten
-              cmake
-            ];
-            dontUseCmakeConfigure = true;
-            buildPhase = ''
-              emcmake cmake . \
-                -DSDL3_DIR=${sdl3-web}/lib/cmake/SDL3
-              emmake make
-            '';
-            installPhase = ''
-              cmake --install . --prefix $out
-            '';
-          };
-        sdl3-mixer-web = with pkgs-25-11;
-          stdenv.mkDerivation {
-            name = "sdl3-mixer-web";
-            src = fetchFromGitHub {
-              owner = "libsdl-org";
-              repo = "SDL_mixer";
-              rev = "release-3.2.4";
-              hash = "sha256-mPk6xU1/GkBtWgF8S9ttha7/PNxcBEiSxpzo6ARLC9I=";
-            };
-            buildInputs = [
-              emscripten
-              cmake
-            ];
-            dontUseCmakeConfigure = true;
-            buildPhase = ''
-              emcmake cmake . \
-                -DSDL3_DIR=${sdl3-web}/lib/cmake/SDL3
-              emmake make
-            '';
-            installPhase = ''
-              cmake --install . --prefix $out
-            '';
-          };
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
             (prev: {
@@ -180,25 +101,6 @@
             })
           ];
         };
-        test-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation (windows-dep-attrs // {
-          name = "test";
-          src = nix-filter {
-            root = ./.;
-            include = [
-              ".justfile"
-              "test.c"
-            ];
-          };
-          buildPhase = ''
-            mkdir -p target/compiled
-            just build-windows-do test.c
-          '';
-          installPhase = ''
-            set -e
-            mkdir -p $out/bin
-            cp target/compiled/main.exe $out/bin/
-          '';
-        });
         game-win = with pkgs.pkgsCross.mingwW64; stdenv.mkDerivation (windows-dep-attrs // {
           name = "scale-to-space";
           src = nix-filter {
@@ -221,34 +123,19 @@
             cp -r assets $out/bin/
           '';
         });
-        c_libs = with pkgs; [
-          sdl3
-          sdl3-image
-          sdl3-mixer
-          libGL
-          glew
-          libbacktrace
-          libunwind
-          kast-c-runtime
-        ];
       in
       {
         packages = {
           inherit
-            sdl3-win
             game-c-source
             game-win
-            test-win;
+            ;
         };
         devShells.default = with pkgs;
           mkShell
             {
               packages = [
-                (pkgs.writeShellScriptBin "kastc" ''
-                  systemd-run --user --scope -p MemoryMax=10G \
-                    rlwrap ${kast}/bin/kast "$@"
-                '')
-                kast-selfhost
+                inputs.geng.packages.${system}.geng
                 rlwrap
                 nixfmt
                 nodejs
@@ -262,15 +149,7 @@
                 butler
                 python314Packages.websockify
                 xhost
-              ] ++ c_libs;
-              # Since I dont have cmake or whatever
-              LIBRARY_PATH = pkgs.lib.makeSearchPath "lib" c_libs;
-              CPATH = pkgs.lib.makeSearchPath "include" c_libs;
-              CLANGD_FLAGS = "--query-driver=${clang}/bin/clang*";
-              SDL3_WEB = "${sdl3-web}";
-              SDL3_IMAGE_WEB = "${sdl3-image-web}";
-              SDL3_MIXER_WEB = "${sdl3-mixer-web}";
-              LSAN_OPTIONS = "suppresions=suppr.txt";
+              ];
               inherit SERVER_ADDRESS;
             };
       });

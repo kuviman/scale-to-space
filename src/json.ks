@@ -1,9 +1,11 @@
 use std.Ast;
 
+use (import "./__deps__.ks").*;
+const json_lib = json;
+
 module:
 
-use (import "./lib/common.ks").*;
-use (import "../deps/json/lib.ks").*;
+use json_lib.*;
 
 const ErrorHandler = @context (type (&str -> Never));
 
@@ -165,7 +167,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
             )
             | :Int32 => `(
                 match $value with (
-                    | :Number n => match n |> Number.try_u32 with (
+                    | :Number n => match &n |> Number.try_u32 with (
                         | :Ok n => n
                         | :Error s => error_fmt!("Expected int: \(s)")
                     )

@@ -1,4 +1,4 @@
-use (import "./lib/_lib.ks").*;
+use (import "./__deps__.ks").*;
 use (import "./model.ks").*;
 const collisions = import "./collisions.ks";
 const json = import "./json.ks";
@@ -14,7 +14,6 @@ const Assets = (
         .music :: geng.audio.Effect,
         .music_high :: geng.audio.Effect,
         .sfx :: Sfx,
-        .font :: font.Font,
         .shaders :: Shaders,
         .textures :: Textures,
         .models :: Models,
@@ -106,7 +105,7 @@ const Assets = (
                     |> Result.unwrap;
                 include_ast json.parse_value(`(value), collisions.MeshProperties)
             );
-            let sfx = geng.audio.load(
+            let sfx = geng.audio.Buffer.load(
                 &format!("\(path)/sfx.wav") |> as_str
             );
             {
@@ -130,34 +129,33 @@ const Assets = (
     };
 
     const load = () -> t => (
-        let music = geng.audio.load("assets/music.wav");
+        let music = geng.audio.Buffer.load("assets/music.wav");
         let music = geng.audio.play_with(
-            music,
+            &music,
             {
                 .@"loop" = true,
                 .volume = MUSIC_VOLUME,
             },
         );
-        let music_high = geng.audio.load("assets/music_high.wav");
+        let music_high = geng.audio.Buffer.load("assets/music_high.wav");
         let music_high = geng.audio.play_with(
-            music_high,
+            &music_high,
             {
                 .@"loop" = true,
                 .volume = 0,
             },
         );
         let sfx = {
-            .deflation = geng.audio.load("assets/sfx/deflation.wav"),
-            .inflation = geng.audio.load("assets/sfx/inflation.wav"),
-            .jetpack = geng.audio.load("assets/sfx/jetpack.wav"),
-            .ground = geng.audio.load("assets/sfx/ground.wav"),
-            .splash = geng.audio.load("assets/sfx/splash.wav"),
-            .win = geng.audio.load("assets/sfx/trumpet.mp3"),
-            .collect = geng.audio.load("assets/sfx/collect.wav"),
-            .score = geng.audio.load("assets/sfx/score.wav"),
-            .volleyball = geng.audio.load("assets/sfx/volleyball.wav"),
+            .deflation = geng.audio.Buffer.load("assets/sfx/deflation.wav"),
+            .inflation = geng.audio.Buffer.load("assets/sfx/inflation.wav"),
+            .jetpack = geng.audio.Buffer.load("assets/sfx/jetpack.wav"),
+            .ground = geng.audio.Buffer.load("assets/sfx/ground.wav"),
+            .splash = geng.audio.Buffer.load("assets/sfx/splash.wav"),
+            .win = geng.audio.Buffer.load("assets/sfx/trumpet.mp3"),
+            .collect = geng.audio.Buffer.load("assets/sfx/collect.wav"),
+            .score = geng.audio.Buffer.load("assets/sfx/score.wav"),
+            .volleyball = geng.audio.Buffer.load("assets/sfx/volleyball.wav"),
         };
-        let font = font.Font.load("assets/font");
 
         let shaders = {
             .model = geng.load_shader("assets/shaders/model"),
@@ -263,7 +261,6 @@ const Assets = (
             .music,
             .music_high,
             .sfx,
-            .font,
             .shaders,
             .textures,
             .models,
@@ -274,7 +271,7 @@ const Assets = (
                 .jetpack = {
                     .model = Model.load("assets/powers/jetpack"),
                     .particle = geng.load_texture("assets/powers/jetpack/particle.png", :Nearest),
-                    .sfx = geng.audio.load("assets/powers/jetpack/sfx.wav"),
+                    .sfx = geng.audio.Buffer.load("assets/powers/jetpack/sfx.wav"),
                 },
             },
             .volleyball = Model.load("assets/models/volleyball"),
