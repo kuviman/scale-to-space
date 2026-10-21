@@ -4,8 +4,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-25-11.url = "github:NixOS/nixpkgs/nixos-25.11";
-    # geng.url = "git+https://github.com/kast-lang/geng?submodules=1";
-    geng.url = "git+file:///home/kuviman/projects/kast-lang/geng?submodules=1";
+    geng.url = "git+https://github.com/kast-lang/geng?submodules=1";
+    # geng.url = "git+file:///home/kuviman/projects/kast-lang/geng?submodules=1";
     flake-utils.url = "github:numtide/flake-utils";
     nix-filter.url = "github:numtide/nix-filter";
   };
