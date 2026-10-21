@@ -178,8 +178,8 @@ const iter_blocks = (blend :: RawBlend) -> std.iter.Iterable[Block] => {
         @native ''
             Blend_find_all_blocks(
                 \(blend),
-                \(@unsafe_copy consumer).f,
-                \(@unsafe_copy consumer).captured
+                \(&consumer)->f,
+                \(&consumer)->captured
             )'';
     ),
 };
