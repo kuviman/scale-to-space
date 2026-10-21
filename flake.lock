@@ -97,11 +97,11 @@
         "nixpkgs-25-11": "nixpkgs-25-11"
       },
       "locked": {
-        "lastModified": 1792560592,
-        "narHash": "sha256-JVBt8DEmPY603PDLTDgviYC2BQhBvOGABXs4zHwupH4=",
+        "lastModified": 1792561983,
+        "narHash": "sha256-Qytwwn22xpKxqO0OSgk92ntYP0WcFzOG7wgccNBzgxg=",
         "ref": "refs/heads/main",
-        "rev": "253d1288a17f41c8986eb3002e2cd49778765d24",
-        "revCount": 12,
+        "rev": "70a3a4fc4c2377839954cc405b35647dae8239a5",
+        "revCount": 14,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/kast-lang/geng"

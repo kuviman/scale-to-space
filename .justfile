@@ -39,7 +39,7 @@ test-blend:
     (cd blend-parser && make)
     ./blend-parser/main.exe "assets/source_assets.blend" --generate-bindings blend-parser/generated.ks
     geng transpile-to-c blend-parser/test.ks
-    geng compile-exe --sanitize
+    CFLAGS='blend-parser/blend.c' geng compile-exe --sanitize
     ./target/compiled/main.exe
     # just build-tcc
     # just run-podman

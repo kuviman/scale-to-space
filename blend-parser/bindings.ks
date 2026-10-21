@@ -1,4 +1,4 @@
-use (import "../src/lib/c.ks").*;
+use std.target.c.*;
 
 use std.collections.OrdMap;
 use std.collections.Treap;
@@ -175,7 +175,12 @@ const iter_blocks = (blend :: RawBlend) -> std.iter.Iterable[Block] => {
             consumer(block);
             true
         );
-        @native ''Blend_find_all_blocks(\(blend), \(consumer).f, \(consumer).captured)'';
+        @native ''
+            Blend_find_all_blocks(
+                \(blend),
+                \(@unsafe_copy consumer).f,
+                \(@unsafe_copy consumer).captured
+            )'';
     ),
 };
 
@@ -183,7 +188,7 @@ const find_singleton = [T] (blend :: &mut Blend) -> T => (
     with Ctx = blend;
     let mut single_block :: Option.t[Block] = :None;
     for block in iter_blocks(blend^.raw) do (
-        if str_from_C_str(@native "\(block)->type->name") == (T as BlendType).name then (
+        if C_str.to_str(@native "\(block)->type->name") == (T as BlendType).name then (
             if single_block is :Some _ then (
                 panic_fmt!("\((T as BlendType).name) is appearing multiple times in .blend");
             );
