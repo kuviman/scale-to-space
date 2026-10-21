@@ -401,7 +401,7 @@ void Blend_drop(Blend *blend) {
   }
   free(blend->dna.names);
   for (size_t i = 0; i < blend->dna.types_len; i++) {
-    Blend_Type *type = &blend->dna.types[i];
+    /* Blend_Type *type = &blend->dna.types[i]; */
   }
   free(blend->dna.types);
   for (size_t i = 0; i < blend->dna.structs_len; i++) {
@@ -495,8 +495,11 @@ void Blend_Type_dump(FILE *out, Blend_Type *type) {
 void Blend_find_all_blocks(Blend *blend,
                            bool (*f)(void *user_data, Blend_Block *block),
                            void *user_data) {
+  fprintf(stderr, "iterating blocks\n");
   Blend_BlockListNode *node = blend->block_list;
   while (node != NULL) {
+    // fprintf(stderr, "iterating block %p: %p\n", (void *)node,
+    // node->block.old);
     if (!f(user_data, &node->block)) {
       return;
     }
@@ -564,7 +567,17 @@ void Blend_Path_drop(Blend_Path path) {
 Blend_Obj Blend_Block_as_obj(Blend_Block *block) {
   return (Blend_Obj){
       .data = block->body,
-      .type = block->type,
+      .type =
+          {
+              .inner = block->type,
+              .qualifiers =
+                  {
+                      /* TODO its actually an array */
+                      .array_order = 0,
+                      .ptr_order = 0,
+                      .is_fn = false,
+                  },
+          },
   };
 }
 
@@ -634,28 +647,39 @@ Blend_Full_Type array_element_type(Blend_Full_Type array_type) {
   return element_type;
 }
 
+const void *relocate_ptr(const void *ptr) {
+  if (ptr == NULL) {
+    return NULL;
+  }
+  const uint8_t *original_ptr = ptr;
+  for (Blend_BlockListNode *node = last_loaded->block_list; node != NULL;
+       node = node->next) {
+    // printf("considering old=%p\n", node->block.old);
+    if (node->block.old == original_ptr) {
+      // if (node->block.old <= original_ptr &&
+      //     original_ptr < node->block.old + node->block.body_length) {
+      ptrdiff_t offset = original_ptr - node->block.old;
+      // printf("!! %p %p %zu %zd\n", original_ptr, node->block.old,
+      //        node->block.body_length, offset);
+      // printf("relocated to block %p\n", node->block.old);
+      return (const void *)(node->block.body + offset);
+    }
+  }
+  panic("Couldn't find matching block for ptr");
+}
+
 Blend_Obj Blend_Obj_get_field(Blend_Obj obj, Blend_String field) {
+  if (field.length != 0 && field.s[0] == '[' &&
+      field.s[field.length - 1] == ']') {
+    size_t i = strtoull(field.s + 1, NULL, 10);
+    return Blend_Obj_index(obj, i);
+  }
   if (str_Blend_String_cmp("*", field) == 0) {
     const uint8_t *original_ptr = Blend_Obj_as_ptr(obj);
     if (original_ptr == NULL) {
       panic("trying to deref NULL");
     }
-    const uint8_t *fixed_ptr = NULL;
-    for (Blend_BlockListNode *node = last_loaded->block_list; node != NULL;
-         node = node->next) {
-      // printf("considering old=%p\n", node->block.old);
-      if (node->block.old <= original_ptr &&
-          original_ptr < node->block.old + node->block.body_length) {
-        ptrdiff_t offset = original_ptr - node->block.old;
-        // printf("!! %p %p %zu %zd\n", original_ptr, node->block.old,
-        //        node->block.body_length, offset);
-        fixed_ptr = node->block.body + offset;
-        break;
-      }
-    }
-    if (fixed_ptr == NULL) {
-      panic("Couldn't find matching block for ptr");
-    }
+    const uint8_t *fixed_ptr = relocate_ptr(original_ptr);
     return (Blend_Obj){
         .data = fixed_ptr,
         .type = pointed_type(obj.type),
@@ -684,8 +708,23 @@ Blend_Obj Blend_Obj_get_field(Blend_Obj obj, Blend_String field) {
         type->name);
 }
 
+Blend_Obj Blend_Obj_ptr_add(Blend_Obj obj, size_t i) {
+  return (Blend_Obj){
+      .data = obj.data + Blend_Full_Type_size(obj.type) * i,
+      .type = obj.type,
+  };
+}
+
 Blend_Obj Blend_Obj_index(Blend_Obj obj, size_t i) {
   if (obj.type.qualifiers.array_order == 0) {
+    if (obj.type.qualifiers.ptr_order > 0) {
+      const uint8_t *array_start = relocate_ptr(Blend_Obj_as_ptr(obj));
+      Blend_Full_Type element_type = pointed_type(obj.type);
+      return (Blend_Obj){
+          .data = array_start + Blend_Full_Type_size(element_type) * i,
+          .type = element_type,
+      };
+    }
     panic("Trying to index non-array obj");
   }
   size_t array_len = obj.type.qualifiers.array_len[0];
@@ -728,6 +767,14 @@ size_t Blend_Full_Type_size(Blend_Full_Type type) {
 void *Blend_Obj_as_ptr(Blend_Obj obj) { return *((void **)obj.data); }
 
 void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
+  if (obj.type.qualifiers.ptr_order == 1 &&
+      obj.type.qualifiers.array_order == 0 &&
+      strcmp(obj.type.inner->name, "char") == 0) {
+    const char *original_ptr = Blend_Obj_as_ptr(obj);
+    const char *s = relocate_ptr(original_ptr);
+    fprintf(out, "%p = \"%s\"", original_ptr, s);
+    return;
+  }
   if (obj.type.qualifiers.ptr_order) {
     fprintf(out, "%p :: ", Blend_Obj_as_ptr(obj));
     Blend_Full_Type_dump(out, obj.type);
@@ -735,8 +782,7 @@ void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
   }
   if (obj.type.qualifiers.array_order) {
     if (obj.type.qualifiers.array_order == 1 &&
-        strncmp(obj.type.inner->name, "char",
-                obj.type.qualifiers.array_len[0]) == 0) {
+        strcmp(obj.type.inner->name, "char") == 0) {
       Blend_String_dump_escaped(out,
                                 (Blend_String){
                                     .s = (const char *)obj.data,
@@ -798,12 +844,32 @@ void Blend_Obj_dump(FILE *out, Blend_Obj obj) {
       Blend_Type_dump(out, type);
     }
   } else {
+    if (strcmp(type->name, "int") == 0) {
+      int x = *(int *)obj.data;
+      fprintf(out, "%d", x);
+      return;
+    }
+    if (strcmp(type->name, "short") == 0) {
+      short x = *(short *)obj.data;
+      fprintf(out, "%d", (int)x);
+      return;
+    }
+    if (strcmp(type->name, "int8_t") == 0) {
+      int8_t x = *(int8_t *)obj.data;
+      fprintf(out, "%d", (int)x);
+      return;
+    }
+    if (strcmp(type->name, "int64_t") == 0) {
+      int64_t x = *(int64_t *)obj.data;
+      fprintf(out, "%lld", (long long)x);
+      return;
+    }
     if (strcmp(type->name, "char") == 0) {
       char c = *obj.data;
       if (isprint(c)) {
         fprintf(out, "'%c'", c);
       } else {
-        fprintf(out, "'\\x%02X'", (int)c);
+        fprintf(out, "'\\x%02X'", (unsigned int)(unsigned char)c);
       }
       return;
     }
@@ -839,8 +905,8 @@ void write_as_kast_type(FILE *out, Blend_Full_Type type) {
     panic("no fn poiters in kast pls");
   }
   if (type.qualifiers.array_order == 0 && type.qualifiers.ptr_order == 1 &&
-      strcmp(type.inner->name, "void") == 0) {
-    fprintf(out, "&str");
+      strcmp(type.inner->name, "char") == 0) {
+    fprintf(out, "Option.t[type (&str)]");
     return;
   }
   if (type.qualifiers.array_order == 1 && type.qualifiers.ptr_order == 0 &&
@@ -875,7 +941,21 @@ typedef struct {
 
 typedef struct {
   Blend_Type *double_linked_list_node_type;
+  Blend_Type *ptr_type;
+  Blend_String array_len_field_name;
 } FieldConfig;
+
+FieldConfig FieldConfig_new(void) {
+  return (FieldConfig){
+      .double_linked_list_node_type = NULL,
+      .ptr_type = NULL,
+      .array_len_field_name =
+          {
+              .length = 0,
+              .s = NULL,
+          },
+  };
+}
 
 void *NOT_NULL = (void *)1;
 
@@ -884,6 +964,20 @@ void config_generic_field(FieldConfig *field, Blend_String generic_name,
   if (str_Blend_String_cmp("DoubleLinkedList", generic_name) == 0) {
     field->double_linked_list_node_type =
         Blend_find_type(CONFIG.blend, generic_arg);
+    return;
+  }
+  if (str_Blend_String_cmp("Ptr", generic_name) == 0) {
+    field->ptr_type = Blend_find_type(CONFIG.blend, generic_arg);
+    return;
+  }
+  if (str_Blend_String_cmp("&Array", generic_name) == 0) {
+    if (generic_arg.length == 0 || generic_arg.s[0] != '.') {
+      panic("expected a field name starting with . as generic arg");
+    }
+    field->array_len_field_name = (Blend_String){
+        .s = generic_arg.s + 1,
+        .length = generic_arg.length - 1,
+    };
     return;
   }
   panic("unrecognized generic %.*s", (int)generic_name.length, generic_name.s);
@@ -909,7 +1003,7 @@ void init_config(Blend *blend) {
   const char *source_end = source.s + source.length;
   const char *s = source.s;
   Blend_String last_type_name = {.s = NULL, .length = 0};
-  while (s - source.s < source.length) {
+  while ((size_t)(s - source.s) < source.length) {
     const char *newline = memchr(s, '\n', source_end - s);
     Blend_String line;
     if (newline == NULL) {
@@ -947,6 +1041,7 @@ void init_config(Blend *blend) {
             Blend_StringMap_get(type_config->fields, field_name);
         if (field_config == NULL) {
           try_malloc(field_config);
+          *field_config = FieldConfig_new();
           Blend_StringMap_add(type_config->fields, field_name, field_config);
         }
         const char *open_bracket = memchr(line.s, '[', line.length);
@@ -994,7 +1089,7 @@ void TypeConfig_drop(void *data) {
   free(type_config);
 }
 
-void drop_config() { Blend_StringMap_drop(CONFIG.types, TypeConfig_drop); }
+void drop_config(void) { Blend_StringMap_drop(CONFIG.types, TypeConfig_drop); }
 
 char *Blend_asprintf(const char *fmt, ...) {
   va_list va1, va2;
@@ -1032,7 +1127,7 @@ void init_qualifiers(FILE *out, Blend_Type_Qualifiers qualifiers) {
   fprintf(out, "}");
 }
 void init_full_type(FILE *out, Blend_Full_Type type) {
-  fprintf(out, "(Blend_Full_Type) {");
+  fprintf(out, "@native ''(Blend_Full_Type) {");
   fprintf(out, ".qualifiers = ");
   init_qualifiers(out, type.qualifiers);
   fprintf(out, ",");
@@ -1040,7 +1135,7 @@ void init_full_type(FILE *out, Blend_Full_Type type) {
           ".inner = Blend_find_type(\\((@current Ctx)^.raw), "
           "Blend_String_of_c(\"%s\")),",
           type.inner->name);
-  fprintf(out, "}");
+  fprintf(out, "}''");
 }
 
 void init_kast_from_obj(FILE *out, FieldConfig *field_config,
@@ -1066,6 +1161,28 @@ void init_kast_from_obj(FILE *out, FieldConfig *field_config,
       fprintf(out, "}");
       return;
     }
+    if (field_config->ptr_type != NULL) {
+      init_kast_from_obj(out, NULL,
+                         (Blend_Full_Type){
+                             .inner = field_config->ptr_type,
+                             .qualifiers =
+                                 {
+                                     .is_fn = false,
+                                     .ptr_order = 1,
+                                     .array_order = 0,
+                                 },
+                         },
+                         obj);
+      return;
+    }
+    if (field_config->array_len_field_name.s != NULL) {
+      panic("&array shouldv been handled before");
+    }
+  }
+  if (type.qualifiers.array_order == 0 && type.qualifiers.ptr_order == 1 &&
+      strcmp(type.inner->name, "char") == 0) {
+    fprintf(out, "str_from_blend(%s)", obj);
+    return;
   }
   if (type.qualifiers.array_order == 1 && type.qualifiers.ptr_order == 0 &&
       strcmp(type.inner->name, "char") == 0) {
@@ -1086,9 +1203,9 @@ void init_kast_from_obj(FILE *out, FieldConfig *field_config,
     return;
   }
   if (type.qualifiers.ptr_order > 0) {
-    fprintf(out, "ref_from_blend(%s, @native ''", obj);
+    fprintf(out, "ref_from_blend(%s, ", obj);
     init_full_type(out, pointed_type(type));
-    fprintf(out, "'', o => ");
+    fprintf(out, ", o => ");
     init_kast_from_obj(out, NULL, pointed_type(type), "o");
     fprintf(out, ")");
     return;
@@ -1151,6 +1268,14 @@ void generate_Type_bindings(FILE *out, Blend_Type *type) {
           field_config->double_linked_list_node_type != NULL) {
         fprintf(out, "DoubleLinkedList[%s]",
                 field_config->double_linked_list_node_type->name);
+      } else if (field_config != NULL && field_config->ptr_type != NULL) {
+        fprintf(out, "Option.t[type (&%s)]", field_config->ptr_type->name);
+      } else if (field_config != NULL &&
+                 field_config->array_len_field_name.s != NULL) {
+        fprintf(out, "Option.t[type (&ArrayList.t[type (");
+        Blend_Full_Type element_ty = pointed_type(field->type);
+        write_as_kast_type(out, element_ty);
+        fprintf(out, ")])]");
       } else {
         write_as_kast_type(out, field->type);
       }
@@ -1191,7 +1316,21 @@ void generate_Type_bindings(FILE *out, Blend_Type *type) {
       Blend_String_dump(out, field->name);
       fprintf(out, "\");\n");
       fprintf(out, "            ");
-      init_kast_from_obj(out, field_config, field->type, "field");
+      if (field_config != NULL &&
+          field_config->array_len_field_name.s != NULL) {
+        fprintf(out, "let len_field = Obj.field(obj, \"");
+        Blend_String_dump(out, field_config->array_len_field_name);
+        fprintf(out, "\");\n");
+        fprintf(out, "            ");
+        fprintf(out, "Array_ref_from_blend[_](field, len_field, ");
+        Blend_Full_Type element_type = pointed_type(field->type);
+        init_full_type(out, element_type);
+        fprintf(out, ", e => ");
+        init_kast_from_obj(out, NULL, element_type, "e");
+        fprintf(out, ")");
+      } else {
+        init_kast_from_obj(out, field_config, field->type, "field");
+      }
       fprintf(out, "\n        ),\n");
     }
     fprintf(out, "    }");
@@ -1244,7 +1383,7 @@ struct Blend_StringMap {
   void *value;
   Blend_StringMap *next[256];
 };
-Blend_StringMap *Blend_StringMap_new() {
+Blend_StringMap *Blend_StringMap_new(void) {
   Blend_StringMap *map;
   try_malloc(map);
   *map = (Blend_StringMap){
@@ -1252,13 +1391,13 @@ Blend_StringMap *Blend_StringMap_new() {
       .next = {0},
   };
   return map;
-};
+}
 Blend_StringMap *Blend_StringMap_get_or_init_next(Blend_StringMap *map,
                                                   char c) {
-  if (map->next[c] == NULL) {
-    map->next[c] = Blend_StringMap_new();
+  if (map->next[(size_t)c] == NULL) {
+    map->next[(size_t)c] = Blend_StringMap_new();
   }
-  return map->next[c];
+  return map->next[(size_t)c];
 }
 void Blend_StringMap_add(Blend_StringMap *map, Blend_String key, void *value) {
   for (size_t i = 0; i < key.length; i++) {
@@ -1270,7 +1409,7 @@ void Blend_StringMap_add(Blend_StringMap *map, Blend_String key, void *value) {
 void *Blend_StringMap_get(Blend_StringMap *map, Blend_String key) {
   for (size_t i = 0; map != NULL && i < key.length; i++) {
     char c = key.s[i];
-    map = map->next[c];
+    map = map->next[(size_t)c];
   }
   if (map == NULL) {
     return NULL;

@@ -3,5 +3,12 @@ ID
 char
 Collection
 .children :: DoubleLinkedList[CollectionChild]
+.gobject :: DoubleLinkedList[CollectionObject]
 CollectionChild
-
+CollectionObject
+Object
+.data :: Ptr[ID]
+Mesh
+AttributeStorage
+.dna_attributes :: &Array[.dna_attributes_num]
+Attribute

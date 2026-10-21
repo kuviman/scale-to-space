@@ -12,7 +12,7 @@ typedef struct {
 } Blend_String;
 
 typedef struct Blend_StringMap Blend_StringMap;
-Blend_StringMap *Blend_StringMap_new();
+Blend_StringMap *Blend_StringMap_new(void);
 void Blend_StringMap_add(Blend_StringMap *map, Blend_String key, void *value);
 void *Blend_StringMap_get(Blend_StringMap *map, Blend_String key);
 void Blend_StringMap_drop(Blend_StringMap *map, void (*drop_value)(void *));
@@ -120,6 +120,7 @@ Blend_String Blend_String_of_c(const char *s);
 
 Blend_Type *Blend_find_type(Blend *blend, Blend_String name);
 void Blend_Type_dump(FILE *out, Blend_Type *type);
+void Blend_Full_Type_dump(FILE *out, Blend_Full_Type type);
 
 void Blend_find_all_blocks(Blend *blend,
                            bool (*f)(void *user_data, Blend_Block *block),
@@ -131,6 +132,7 @@ void Blend_find_all_blocks_with_code(Blend *blend, const char *code,
 void Blend_Block_dump(FILE *out, Blend_Block *block);
 Blend_Obj Blend_Block_as_obj(Blend_Block *block);
 void *Blend_Obj_as_ptr(Blend_Obj obj);
+Blend_Obj Blend_Obj_ptr_add(Blend_Obj obj, size_t i);
 Blend_Obj Blend_Obj_index(Blend_Obj obj, size_t i);
 Blend_Obj Blend_Obj_get_field(Blend_Obj obj, Blend_String field);
 Blend_Obj Blend_Obj_get_path(Blend_Obj obj, Blend_Path path);
