@@ -1,0 +1,7 @@
+CompileFlags:
+  Add: [
+    -isystem, .,
+    -isystem, $KAST_PATH/c-runtime/include,
+    -Wall, -Wextra, -Wpedantic,
+    -DKAST_ALLOCATION_STATS, -DKAST_DEBUG
+  ]

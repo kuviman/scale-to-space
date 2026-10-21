@@ -142,13 +142,13 @@
                 just
                 caddy
                 inotify-tools
-                clang
                 tinycc
                 valgrind
                 emscripten
                 butler
                 python314Packages.websockify
                 xhost
+                clang-tools
               ];
               inherit SERVER_ADDRESS;
             };
