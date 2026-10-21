@@ -27,9 +27,9 @@ const Block = @opaque_type "Blend_Block*";
 
 const load = (path :: &str) -> Blend => (
     @native "#include <blend-parser/blend.h>";
-    let path = C_String_from_str(path);
+    let path = C_String.from_str(path);
     let raw = @native "Blend_load(\(path))";
-    C_String_drop(path);
+    C_String.drop(path);
     let mut blocks = Treap.new();
     for block in iter_blocks(raw) do (
         let { left, right } = Treap.split(blocks, data => (

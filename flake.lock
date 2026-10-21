@@ -97,11 +97,11 @@
         "nixpkgs-25-11": "nixpkgs-25-11"
       },
       "locked": {
-        "lastModified": 1792559034,
-        "narHash": "sha256-S2NHKZTn2oChcOQKRBVNZraOlHoUm28FdU0IKNYrytA=",
+        "lastModified": 1792560592,
+        "narHash": "sha256-JVBt8DEmPY603PDLTDgviYC2BQhBvOGABXs4zHwupH4=",
         "ref": "refs/heads/main",
-        "rev": "a0ea65b67a0b1d69966bcc1d6fcffd2a6aa5fc02",
-        "revCount": 11,
+        "rev": "253d1288a17f41c8986eb3002e2cd49778765d24",
+        "revCount": 12,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/kast-lang/geng"
@@ -121,11 +121,11 @@
         "opam-repository": "opam-repository"
       },
       "locked": {
-        "lastModified": 1792495829,
-        "narHash": "sha256-TRNeazaz+u+Kn4HRDVkYN4FfxziDs435PkWoB3wMBv8=",
+        "lastModified": 1792560205,
+        "narHash": "sha256-9q+JOsVurhVZEPWERBr+VOmcCFAaLeyI91PAN8Sa74c=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "56ac37eba6a02431eaea449a100e59ac7190b276",
+        "rev": "0048e9cc041dda207748cc0bd074b31ee939df1d",
         "type": "github"
       },
       "original": {

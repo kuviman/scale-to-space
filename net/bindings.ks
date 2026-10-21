@@ -4,9 +4,9 @@ module:
 
 const init = (address :: &str) => (
     @native "#include <net/client.h>";
-    let address_c = C_String_from_str(address);
+    let address_c = C_String.from_str(address);
     @native "badcop_init(\(address_c))";
-    C_String_drop(address_c);
+    C_String.drop(address_c);
 );
 
 const PlayerData = newtype {
@@ -21,9 +21,9 @@ const PlayerData = newtype {
 };
 
 const set_name = (name :: &str) => (
-    let name = C_String_from_str(name);
+    let name = C_String.from_str(name);
     @native "badcop_set_name(\(name))";
-    C_String_drop(name);
+    C_String.drop(name);
 );
 
 const beat_game = (score :: Int32) => (

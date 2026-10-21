@@ -38,8 +38,8 @@ run-and-profile:
 test-blend:
     (cd blend-parser && make)
     ./blend-parser/main.exe "assets/source_assets.blend" --generate-bindings blend-parser/generated.ks
-    just build-c blend-parser/test.ks
-    just build-native --sanitize
+    geng transpile-to-c blend-parser/test.ks
+    geng compile-exe --sanitize
     ./target/compiled/main.exe
     # just build-tcc
     # just run-podman
