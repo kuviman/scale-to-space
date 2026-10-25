@@ -2,6 +2,7 @@ use (import "./__deps__.ks").*;
 use (import "./assets.ks").*;
 use (import "./model.ks").*;
 
+const json = import "./json.ks";
 const badcop = import "../net/bindings.ks";
 const collisions = import "./collisions.ks";
 
@@ -43,6 +44,7 @@ const beachball_side = (pos :: Vec3) -> Int32 => (
 );
 
 const Entity = newtype {
+    .collision :: Option.t[collisions.CollisionResult],
     .skin :: Int32,
     .position :: Vec3,
     .velocity :: Vec3,
@@ -50,20 +52,23 @@ const Entity = newtype {
     .rotation :: Quat,
     .angular_velocity :: Vec3,
     .can_jump :: Bool,
-    .scale :: Float32,
-    .scale_speed :: Float32,
+    .core :: {
+        .radius :: Float32,
+    },
+    .shell :: {
+        .radius :: Float32,
+        .radius_change_speed :: Float32,
+        .min_radius :: Float32,
+        .max_radius :: Float32,
+    },
     .power :: Power,
     .is_player :: Bool,
     .input :: PlayerInput,
-    .min_scale :: Float32,
-    .max_scale :: Float32,
     .mass :: Float32,
 };
 
 const player_speed = 15;
 const player_acceleration = 20;
-
-const MAX_SPEED = 200;
 
 const PlayerInput = newtype {
     .wasd :: Vec2,
@@ -82,7 +87,7 @@ impl Entity as module = (
             self^.skin,
             self^.position,
             self^.velocity,
-            self^.scale,
+            self^.shell.radius,
             self^.flat_rot,
             self^.rotation,
             .jetpack,
@@ -160,7 +165,7 @@ impl Entity as module = (
                     ),
                 );
                 let antigravity = if entity^.power is :Antigravity { .active, ... } then active else false;
-                let gravity = if antigravity then 30 else 50;
+                let gravity = if antigravity then 30 else (@current Assets.Ctx)^.config.gravity;
                 entity^.velocity.2 -= gravity * delta_time;
                 if antigravity then (
                     let damp = 0.50;
@@ -178,22 +183,22 @@ impl Entity as module = (
         );
 
         let scale_dir = if not input.jetpack_enabled and input.space then (
-            if entity^.scale < entity^.max_scale then (
+            if entity^.shell.radius < entity^.shell.max_radius then (
                 1
             ) else 0
         ) else (
-            if entity^.scale > entity^.min_scale then (
+            if entity^.shell.radius > entity^.shell.min_radius then (
                 -1
             ) else 0
         );
         let scale_speed = Int32_to_Float32(scale_dir);
-        let scale_time = 0.2;
-        let scale_speed = scale_speed / scale_time;
-        entity^.scale_speed = scale_speed;
-        entity^.scale = clamp(
-            entity^.scale + entity^.scale_speed * delta_time,
-            .min = entity^.min_scale,
-            .max = entity^.max_scale,
+        let scale_time = (@current Assets.Ctx)^.config.player.shell.scale_time;
+        let scale_speed = scale_speed * (entity^.shell.max_radius - entity^.shell.min_radius) / scale_time;
+        entity^.shell.radius_change_speed = scale_speed;
+        entity^.shell.radius = clamp(
+            entity^.shell.radius + scale_speed * delta_time,
+            .min = entity^.shell.min_radius,
+            .max = entity^.shell.max_radius,
         );
         if scale_dir != 0 then (
             let play = if self^.flate_sfx is :Some { sfx, .dir = cur_dir } then (
@@ -206,7 +211,7 @@ impl Entity as module = (
             ) else true;
             if play then (
                 let volume = if scale_dir > 0 then 1 else (
-                    (entity^.scale - entity^.min_scale) / (entity^.max_scale - entity^.min_scale)
+                    (entity^.shell.radius - entity^.shell.min_radius) / (entity^.shell.max_radius - entity^.shell.min_radius)
                 );
                 let sfx = geng.audio.play_with(
                     if scale_dir > 0 then &self^.assets.sfx.inflation else &self^.assets.sfx.deflation,
@@ -499,8 +504,8 @@ const reset_beachball = () -> Beachball => (
     let mut entity = reset_player(.skin = 1, .power = :Antigravity { .active = true });
     entity.position = { -47.435856, -224.922592, 20.447927 };
     entity.is_player = false;
-    entity.scale = 3;
-    entity.max_scale = entity.scale;
+    entity.shell.radius = 3;
+    entity.shell.max_radius = entity.shell.radius;
     entity.mass = 0.1;
     {
         .old = entity,
@@ -511,30 +516,39 @@ const reset_beachball = () -> Beachball => (
     }
 );
 
-const reset_player = (.skin, .power) -> Entity => {
-    .input = {
-        .wasd = { 0, 0 },
-        .space = false,
-        .shift = false,
-        .use_power = false,
-        .jetpack_enabled = false,
-        .control_mode = :RelativeToCamera,
-    },
-    .position = { 0, 0, 10 },
-    .velocity = { 0, 0, 0 },
-    .is_player = true,
-    .rotation = Quat.IDENTITY,
-    .mass = 1,
-    .flat_rot = Angle.from_degrees(0),
-    .angular_velocity = { 0, 0, 0 },
-    .skin,
-    .can_jump = false,
-    .scale = 1,
-    .min_scale = 1,
-    .max_scale = 2,
-    .scale_speed = 0,
-    .power,
-};
+const reset_player = (.skin, .power) -> Entity => (
+    let ref config = (@current Assets.Ctx)^.config;
+    {
+        .collision = :None,
+        .input = {
+            .wasd = { 0, 0 },
+            .space = false,
+            .shift = false,
+            .use_power = false,
+            .jetpack_enabled = false,
+            .control_mode = :RelativeToCamera,
+        },
+        .position = { 0, 0, 10 },
+        .velocity = { 0, 0, 0 },
+        .is_player = true,
+        .rotation = Quat.IDENTITY,
+        .mass = 1,
+        .flat_rot = Angle.from_degrees(0),
+        .angular_velocity = { 0, 0, 0 },
+        .skin,
+        .can_jump = false,
+        .core = {
+            .radius = config^.player.core.radius,
+        },
+        .shell = {
+            .radius = config^.player.shell.min_radius,
+            .radius_change_speed = 0,
+            .min_radius = config^.player.shell.min_radius,
+            .max_radius = config^.player.shell.max_radius,
+        },
+        .power,
+    }
+);
 
 const draw_particle = (
     self :: &mut Game,
@@ -612,7 +626,7 @@ const update_step = (
                     let particle = {
                         .position = Vec3.add(
                             entity^.position,
-                            Vec3.mul(up, entity^.scale + 0.2),
+                            Vec3.mul(up, entity^.shell.radius + 0.2),
                         ),
                         .texture = self^.assets.powers.jetpack.particle,
                         .t = 0.2,
@@ -653,7 +667,7 @@ const update_step = (
                 let particle = {
                     .position = Vec3.add(
                         entity^.position,
-                        { ...Vec2.rotate({ entity^.scale, 0 }, Angle.from_degrees(deg)), 0 }
+                        { ...Vec2.rotate({ entity^.shell.radius, 0 }, Angle.from_degrees(deg)), 0 }
                     ),
                     .texture = self^.assets.textures.water_particle,
                     .t = 0,
@@ -666,24 +680,44 @@ const update_step = (
             );
         );
     );
-    let mut max_speed = MAX_SPEED;
+    let mut max_speed = (@current Assets.Ctx)^.config.player.max_speed;
+    entity^.collision = :None;
     for { type_index, level_model } in (
         &self^.assets.models.level
             |> ArrayList.iter
             |> std.iter.enumerate
     ) do (
-        let collision_entity = {
+        let soft_collision_entity = {
             .position = &mut entity^.position,
             .velocity = &mut entity^.velocity,
             .angular_velocity = &mut entity^.angular_velocity,
-            .radius_change_speed = entity^.scale_speed,
-            .radius = entity^.scale,
+            .radius_change_speed = entity^.shell.radius_change_speed,
+            .radius = entity^.shell.radius,
             .inverse_mass = 1,
+            .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
         };
         if collisions.collide_and_react(
-            collision_entity,
+            soft_collision_entity,
             .mesh = &level_model^.collision_mesh,
             .properties = &level_model^.properties,
+            .delta_time,
+        ) is :Some collision then (
+            entity^.collision = :Some collision;
+        );
+        let hard_collision_entity = {
+            .position = &mut entity^.position,
+            .velocity = &mut entity^.velocity,
+            .angular_velocity = &mut entity^.angular_velocity,
+            .radius_change_speed = 0,
+            .radius = entity^.core.radius,
+            .inverse_mass = 1,
+            .soft = :None,
+        };
+        if collisions.collide_and_react(
+            hard_collision_entity,
+            .mesh = &level_model^.collision_mesh,
+            .properties = &level_model^.properties,
+            .delta_time,
         ) is :Some collision then (
             if type_index == 4 and score_beachball then (
                 if self^.beachball.scoring is :CanScore { .last_touched_side } then (
@@ -710,14 +744,10 @@ const update_step = (
             );
             let volume = min(abs(collision.velocity_along_normal) / 50, 1);
             if volume > 0.1 then (
-                let collision_point = Vec3.sub(
-                    entity^.position,
-                    Vec3.mul(collision.normal, entity^.scale),
-                );
                 for _ in 0..level_model^.properties.particles do (
                     const rng = () => std.random.gen_range(.min = -0.5, .max = 0.5);
                     let p = Vec3.add(
-                        collision_point,
+                        collision.point,
                         Vec3.mul({ rng(), rng(), rng() }, level_model^.properties.particle_spread),
                     );
                     let particle = {
@@ -727,7 +757,7 @@ const update_step = (
                                 collision.normal,
                                 Vec3.dot(
                                     collision.normal,
-                                    Vec3.sub(p, collision_point),
+                                    Vec3.sub(p, collision.point),
                                 ),
                             ),
                         ),
@@ -754,7 +784,7 @@ const send_update = (self :: &mut Game) => (
         .angular_velocity = e^.angular_velocity,
         .skin = e^.skin,
         .jetpack = self^.jetpack_enabled,
-        .scale = e^.scale,
+        .scale = e^.shell.radius,
         .distance_to_beachball = Vec3.length(Vec3.sub(self^.beachball.current.position, e^.position)),
     };
     badcop.send_update(make_update(&self^.player));
@@ -828,7 +858,8 @@ const handle_mmo = (self :: &mut Game) => (
             @native "glEnable(GL_BLEND)";
             @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
             @native "glCullFace(GL_BACK)";
-            let assets = Assets.load();
+            let mut assets = Assets.load();
+            with Assets.Ctx = &mut assets;
             let water = (
                 let mut v :: Vec2 = Vec2.mul({ 1, -1 }, 1000);
                 let mut vs = ArrayList.new();
@@ -865,7 +896,6 @@ const handle_mmo = (self :: &mut Game) => (
                 .next_send = 0,
                 .dead = false,
                 .dead_timer = 0,
-                .assets,
                 .water,
                 .model_renderer = Model.Renderer.init(),
                 .player = reset_player(
@@ -928,17 +958,19 @@ const handle_mmo = (self :: &mut Game) => (
                     );
                     ugli.VertexBuffer.init(&data)
                 ),
+                .assets,
             }
         ),
         .draw = self => with_return (
             self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
-            with Assets.Ctx = &self^.assets;
+            with Assets.Ctx = &mut self^.assets;
             with Model.Renderer.Ctx = &self^.model_renderer;
             with Model.PlayerCtx = {
+                .collision = :None,
                 .position = self^.player.position,
-                .radius = if self^.dead then 0 else self^.player.scale,
+                .radius = if self^.dead then 0 else self^.player.shell.radius,
                 .volleyball_position = self^.beachball.current.position,
-                .volleyball_radius = self^.beachball.current.scale,
+                .volleyball_radius = self^.beachball.current.shell.radius,
             };
             with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                 self^.camera,
@@ -965,10 +997,11 @@ const handle_mmo = (self :: &mut Game) => (
             );
             if not self^.dead then (
                 with Model.PlayerCtx = {
+                    .collision = self^.player.collision,
                     .position = self^.player.position,
                     .radius = 0,
                     .volleyball_position = self^.beachball.current.position,
-                    .volleyball_radius = self^.beachball.current.scale,
+                    .volleyball_radius = self^.beachball.current.shell.radius,
                 };
                 Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
             );
@@ -1332,6 +1365,13 @@ const handle_mmo = (self :: &mut Game) => (
             );
         ),
         .update = (self, delta_time) => with_return (
+            let delta_time = delta_time * self^.assets.config.time_scale;
+            with Assets.Ctx = &mut self^.assets;
+            # reload
+            self^.player.core.radius = self^.assets.config.player.core.radius;
+            self^.player.shell.min_radius = self^.assets.config.player.shell.min_radius;
+            self^.player.shell.max_radius = self^.assets.config.player.shell.max_radius;
+
             let delta_time = min(delta_time, 0.050);
             self^.next_fire_particle -= delta_time;
             if self^.next_fire_particle < 0 then (
@@ -1414,7 +1454,7 @@ const handle_mmo = (self :: &mut Game) => (
             if self^.timer is :Win _ then () else (
                 for scale in &mut self^.dragon_scales |> ArrayList.iter_mut do (
                     if scale^.collected then continue;
-                    if Vec3.length(Vec3.sub(self^.player.position, scale^.position)) < self^.player.scale + 1 then (
+                    if Vec3.length(Vec3.sub(self^.player.position, scale^.position)) < self^.player.shell.radius + 1 then (
                         geng.audio.play(&self^.assets.sfx.collect);
                         scale^.collected = true;
                         for (_ :: Int32) in 0..10 do (
@@ -1442,7 +1482,7 @@ const handle_mmo = (self :: &mut Game) => (
             );
             handle_mmo(self);
             geng.audio.Effect.set_volume(self^.jetpack_sfx, if self^.jetpack_enabled then 0.5 else 0);
-            if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < self^.player.scale then (
+            if Vec3.length(Vec3.sub(self^.player.position, FINISH)) < self^.player.shell.radius then (
                 if self^.timer is :Working t then (
                     geng.audio.play(&self^.assets.sfx.win);
                     badcop.beat_game(Float32_to_Int32(t));
@@ -1512,7 +1552,7 @@ const handle_mmo = (self :: &mut Game) => (
                 let step = min(max_delta_time, -self^.next_physics);
                 self^.next_physics += step;
                 update_step(self, &mut self^.player, step, .score_beachball = false);
-                update_step(self, &mut self^.beachball.old, step, .score_beachball = false);
+                # update_step(self, &mut self^.beachball.old, step, .score_beachball = false);
                 (
                     let pos = self^.beachball.current.position;
                     let side = beachball_side(pos);
@@ -1523,7 +1563,7 @@ const handle_mmo = (self :: &mut Game) => (
                             self^.beachball.scoring = :CanScore { .last_touched_side = serving_side };
                         );
                     );
-                    update_step(self, &mut self^.beachball.new, step, .score_beachball = true);
+                    # update_step(self, &mut self^.beachball.new, step, .score_beachball = true);
                 );
                 self^.beachball.current = (
                     self^.beachball.lerp = min(1, self^.beachball.lerp + step / 0.3);
@@ -1556,13 +1596,15 @@ const handle_mmo = (self :: &mut Game) => (
                     .position = &mut e^.position,
                     .velocity = &mut e^.velocity,
                     .angular_velocity = &mut e^.angular_velocity,
-                    .radius_change_speed = e^.scale_speed,
-                    .radius = e^.scale,
+                    .radius_change_speed = 0,
+                    .radius = e^.shell.radius,
                     .inverse_mass = 1 / e^.mass,
+                    .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
                 };
                 if collisions.collide_and_react_entities(
                     entity(&mut self^.player),
                     entity(&mut self^.beachball.current),
+                    .delta_time,
                 ) is :Some result then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side = ref mut last_touched_side } then (
                         last_touched_side^ = if self^.beachball.current.position.0 < (include_ast BEACHBALL_NET_X) then 1 else -1;
@@ -1594,6 +1636,7 @@ const handle_mmo = (self :: &mut Game) => (
             );
         ),
         .handle_event = (self, event) => (
+            with Assets.Ctx = &mut self^.assets;
             match event with (
                 | :KeyPress :Digit1 => (
                     emote(self, self^.player.position, 0);
@@ -1666,6 +1709,9 @@ const handle_mmo = (self :: &mut Game) => (
                         .lerp = 1,
                     };
                     self^.send_beachball_update = true;
+                )
+                | :KeyPress :L => (
+                    Assets.reload();
                 )
                 | :KeyPress :P => (
                     self^.power_index = (self^.power_index + 1) % 3;

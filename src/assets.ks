@@ -1,5 +1,6 @@
 use (import "./__deps__.ks").*;
 use (import "./model.ks").*;
+const config = import "./config.ks";
 const collisions = import "./collisions.ks";
 const json = import "./json.ks";
 
@@ -19,6 +20,7 @@ const Assets = (
         .models :: Models,
         .powers :: Powers,
         .volleyball :: Model.t,
+        .config :: config.Config,
     };
 
     const Powers = newtype {
@@ -32,7 +34,7 @@ const Assets = (
         },
     };
 
-    const Ctx = @context type (&t);
+    const Ctx = @context type (&mut t);
 
     const Shaders = newtype {
         .model :: ugli.Program,
@@ -128,7 +130,17 @@ const Assets = (
         .wormy :: Model.t,
     };
 
+    const load_config = () -> config.Config => (
+        (include_ast json.loader(config.Config))("assets/config.json")
+    );
+
+    const reload = () => (
+        let assets = @current Ctx;
+        assets^.config = load_config();
+    );
+
     const load = () -> t => (
+        let config = load_config();
         let music = geng.audio.Buffer.load("assets/music.wav");
         let music = geng.audio.play_with(
             &music,
@@ -275,6 +287,7 @@ const Assets = (
                 },
             },
             .volleyball = Model.load("assets/models/volleyball"),
+            .config,
         }
     );
 );

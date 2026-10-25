@@ -5,6 +5,7 @@ module:
 const Collision = newtype {
     .penetration :: Float32,
     .normal :: Vec3,
+    .point :: Vec3,
 };
 
 const Entity = newtype {
@@ -179,7 +180,9 @@ const distance_to_face = (
 const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face) => (
     let { .normal, .distance } = distance_to_face(entity.position, face);
     if 0 < distance and distance < entity.radius then (
-        update(result, { .penetration = entity.radius - distance, .normal });
+        let penetration = entity.radius - distance;
+        let point = Vec3.sub(entity.position, Vec3.mul(normal, distance));
+        update(result, { .penetration, .normal, .point });
     );
 );
 
@@ -187,6 +190,7 @@ const collide = (entity :: Entity, mesh :: &Mesh) -> Option.t[Collision] => with
     let mut result :: Collision = {
         .penetration = -1,
         .normal = { 0, 0, 0 },
+        .point = { 0, 0, 0 },
     };
     let from = {
         floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
@@ -224,6 +228,8 @@ const MeshProperties = newtype {
 const CollisionResult = newtype {
     .velocity_along_normal :: Float32,
     .normal :: Vec3,
+    .penetration :: Float32,
+    .point :: Vec3,
 };
 
 const Entity = newtype {
@@ -233,6 +239,13 @@ const Entity = newtype {
     .radius_change_speed :: Float32,
     .radius :: Float32,
     .inverse_mass :: Float32,
+    .soft :: Option.t[SoftEntity],
+};
+
+const SoftEntity = newtype {
+    .spring_k :: Float32,
+    .damp :: Float32,
+    .max_speed :: Float32,
 };
 
 const do_react_entities = (
@@ -241,48 +254,72 @@ const do_react_entities = (
     collision :: Collision,
     .properties :: &MeshProperties,
     .friction_into_linear :: Float32,
+    .delta_time :: Float32,
 ) -> CollisionResult => (
     let bounciness = properties^.bounciness;
     let jump_modifier = 4;
     let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
     let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
-    a.position^ = Vec3.add(
-        a.position^,
-        Vec3.mul(collision.normal, collision.penetration * ka),
-    );
-    b.position^ = Vec3.add(
-        b.position^,
-        Vec3.mul(collision.normal, collision.penetration * kb),
-    );
     let relative_velocity = () => Vec3.sub(a.velocity^, b.velocity^);
     let radius_change_speed = a.radius_change_speed + b.radius_change_speed;
     let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
         - radius_change_speed * jump_modifier;
     let bounce_rel_vel = Vec3.dot(relative_velocity(), collision.normal);
-    if bounce_rel_vel < 0 then (
-        a.velocity^ = Vec3.add(
-            a.velocity^,
-            Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * ka),
+    if &a.soft |> Option.is_none and &b.soft |> Option.is_none then (
+        a.position^ = Vec3.add(
+            a.position^,
+            Vec3.mul(collision.normal, collision.penetration * ka),
         );
-        b.velocity^ = Vec3.add(
-            b.velocity^,
-            Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * kb),
+        b.position^ = Vec3.add(
+            b.position^,
+            Vec3.mul(collision.normal, collision.penetration * kb),
         );
-    );
-    (
-        let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
-            - radius_change_speed * jump_modifier;
-        if velocity_along_normal < 0 then (
+        if bounce_rel_vel < 0 then (
             a.velocity^ = Vec3.add(
                 a.velocity^,
-                Vec3.mul(collision.normal, -velocity_along_normal * ka),
+                Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * ka),
             );
             b.velocity^ = Vec3.add(
                 b.velocity^,
-                Vec3.mul(collision.normal, -velocity_along_normal * kb),
+                Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * kb),
             );
         );
+        (
+            let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
+                - radius_change_speed * jump_modifier;
+            if velocity_along_normal < 0 then (
+                a.velocity^ = Vec3.add(
+                    a.velocity^,
+                    Vec3.mul(collision.normal, -velocity_along_normal * ka),
+                );
+                b.velocity^ = Vec3.add(
+                    b.velocity^,
+                    Vec3.mul(collision.normal, -velocity_along_normal * kb),
+                );
+            );
+        );
+    ) else (
+        let soft_react = (a, b) => (
+            if a.soft is :Some a_soft then (
+                let mut force = collision.penetration * a_soft.spring_k;
+                if velocity_along_normal > 0 then (
+                    force *= properties^.bounciness;
+                );
+                let force = Vec3.mul(collision.normal, force);
+                a.velocity^ = Vec3.add(
+                    a.velocity^,
+                    Vec3.mul(force, a.inverse_mass * delta_time)
+                );
+                b.velocity^ = Vec3.add(
+                    a.velocity^,
+                    Vec3.mul(force, -b.inverse_mass * delta_time)
+                );
+            );
+        );
+        soft_react(a, b);
+        soft_react(b, a);
     );
+    @comment_out (
     let relative_angular_velocity = Vec3.sub(a.angular_velocity^, b.angular_velocity^);
     let relative_angular_velocity = Vec3.add(
         relative_angular_velocity,
@@ -309,15 +346,26 @@ const do_react_entities = (
         b.velocity^,
         Vec3.mul(Vec3.cross(angular_impulse, collision.normal), kb),
     );
-    { .velocity_along_normal, .normal = collision.normal }
+    );
+    {
+        .velocity_along_normal,
+        .normal = collision.normal,
+        .penetration = collision.penetration,
+        .point = collision.point,
+    }
 );
 
-const collide_and_react_entities = (a :: Entity, b :: Entity) -> Option.t[CollisionResult] => (
+const collide_and_react_entities = (
+    a :: Entity,
+    b :: Entity,
+    .delta_time :: Float32,
+) -> Option.t[CollisionResult] => (
     let delta_pos = Vec3.sub(a.position^, b.position^);
     let distance = delta_pos |> Vec3.length;
     let penetration = a.radius + b.radius - distance;
     if penetration > 0 then (
         let normal = delta_pos |> Vec3.normalize_or_zero;
+        let point = Vec3.sub(a.position^, Vec3.mul(normal, a.radius - penetration / 2));
         let properties = &{
             .bounciness = 2,
             .friction = 1,
@@ -329,9 +377,10 @@ const collide_and_react_entities = (a :: Entity, b :: Entity) -> Option.t[Collis
         :Some do_react_entities(
             a,
             b,
-            { .normal, .penetration },
+            { .normal, .penetration, .point },
             .properties,
             .friction_into_linear = 0,
+            .delta_time,
         )
     ) else :None
 );
@@ -340,6 +389,7 @@ const collide_and_react = (
     entity :: Entity,
     .mesh :: &Mesh,
     .properties :: &MeshProperties,
+    .delta_time :: Float32,
 ) -> Option.t[CollisionResult] => (
     if collide({ .position = entity.position^, .radius = entity.radius }, mesh) is :Some collision then (
         let mesh_entity = {
@@ -349,6 +399,7 @@ const collide_and_react = (
             .radius_change_speed = 0,
             .radius = 0,
             .inverse_mass = 0,
+            .soft = :None,
         };
         :Some do_react_entities(
             entity,
@@ -356,6 +407,7 @@ const collide_and_react = (
             collision,
             .properties,
             .friction_into_linear = 1,
+            .delta_time,
         )
     ) else (
         :None

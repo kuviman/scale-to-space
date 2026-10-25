@@ -145,12 +145,15 @@ const find_field = (pairs :: &ArrayList.t[Pair], name :: &str) -> Value => with_
             return value^;
         );
     );
+    for &{ ref key, ref value } in pairs |> ArrayList.iter do (
+        println!("existing key: \(key |> as_str)");
+    );
     error_fmt!("Expected field: \(name)")
 );
 
 const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
     | target.name == "interpreter" => (
-        match std.reflection.type_info(T) with (
+        let result = match std.reflection.type_info(T) with (
             | :Bool => `(
                 match $value with (
                     | :Bool b => b
@@ -207,11 +210,13 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     add_field(`(.$name_ident = $field));
                 );
                 `(
-                    let $field_pairs = match $value with (
-                        | :Object fields => fields
-                        | _ => error("Expected an obj")
-                    );
-                    { $fields }
+                    ( # TODO extra scope because $field_pairs is shadowing but same symbol
+                        let $field_pairs = match $value with (
+                            | :Object fields => fields
+                            | _ => error("Expected an obj")
+                        );
+                        { $fields }
+                    )
                 )
             )
             | :Variant { .variants } => (
@@ -260,7 +265,18 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     ) :: T
                 )
             )
-        )
+        );
+        result
     )
     | true => panic("comptime only")
+);
+
+const loader = (T :: Type) -> Ast => `(
+    (path :: &str) -> T => (
+        with ErrorHandler = (msg => panic(msg));
+        let source = std.fs.read_file(path);
+        let value = parse(&mut Reader.create(&source |> as_str))
+            |> Result.unwrap;
+        include_ast parse_value(`(value), T)
+    )
 );
