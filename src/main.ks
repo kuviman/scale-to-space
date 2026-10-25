@@ -3,7 +3,6 @@ use (import "./assets.ks").*;
 use (import "./model.ks").*;
 
 const badcop = import "../net/bindings.ks";
-
 const collisions = import "./collisions.ks";
 
 const FINISH :: Vec3 = { -120.198761, -1.251943, 147.323959 };
@@ -408,33 +407,7 @@ const TimerState = newtype (
     | :Disabled
 );
 
-const FpsCounter = newtype {
-    .frames :: Float32,
-    .start :: Float32,
-};
-
-impl FpsCounter as module = (
-    module:
-
-    const new = () -> FpsCounter => {
-        .frames = 0,
-        .start = geng.time_since_start(),
-    };
-
-    const frame = (self :: &mut FpsCounter) => (
-        self^.frames += 1;
-        if geng.time_since_start() - self^.start > 1 then (
-            self^ = new();
-        );
-    );
-
-    const fps = (self :: &FpsCounter) -> Float32 => (
-        let seconds = geng.time_since_start() - self^.start;
-        if seconds > 0.01 then (
-            self^.frames / seconds
-        ) else 0
-    );
-);
+include "./fps_counter.ks";
 
 const BeachballScoringState = newtype (
     | :CanScore { .last_touched_side :: Int32 }
@@ -1314,9 +1287,6 @@ const handle_mmo = (self :: &mut Game) => (
                         .align = 0.5,
                     );
                 );
-                FpsCounter.frame(&mut self^.fps_counter);
-                let fps = FpsCounter.fps(&self^.fps_counter);
-                let fps = Float32_to_Int32(fps);
                 @native "glDisable(GL_DEPTH_TEST)";
                 with_return (
                     let power_text = match self^.player.power with (
@@ -1350,10 +1320,9 @@ const handle_mmo = (self :: &mut Game) => (
                         .align = 0,
                     );
                 );
-                geng.Font.draw(
-                    font,
-                    &format!("FPS: \(fps)")
-                        |> as_str,
+                FpsCounter.draw(
+                    &mut self^.fps_counter,
+                    .font,
                     .matrix = Mat4.translate({ -2, -9.5, 0})
                         |> Mat4.mul_mat(Mat4.scale_uniform(0.5)),
                     .color = { 0, 0, 0, 1 },
