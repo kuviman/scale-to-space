@@ -1,6 +1,9 @@
-const collisions = import "./collisions.ks";
-
 module:
+
+const SoftEntity = newtype {
+    .min_spring_k :: Float32,
+    .max_spring_k :: Float32,
+};
 
 const Config = newtype {
     .time_scale :: Float32,
@@ -12,7 +15,7 @@ const Config = newtype {
         .shell :: {
             .min_radius :: Float32,
             .max_radius :: Float32,
-            .soft :: collisions.SoftEntity,
+            .soft :: SoftEntity,
             .scale_time :: Float32,
         },
         .max_speed :: Float32,

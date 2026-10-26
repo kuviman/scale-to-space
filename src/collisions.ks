@@ -245,7 +245,6 @@ const Entity = newtype {
 
 const SoftEntity = newtype {
     .spring_k :: Float32,
-    .towards_normal_jump_k :: Float32,
 };
 
 const do_react_entities = (

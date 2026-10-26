@@ -306,6 +306,28 @@ impl Entity as module = (
     );
 );
 
+const lerp_t = (a :: Float32, b :: Float32, x :: Float32) -> Float32 => (
+    (x - a) / (b - a)
+);
+const lerp = (a :: Float32, b :: Float32, t :: Float32) -> Float32 => (
+    a + (b - a) * t
+);
+
+const collision_entity = (e :: &mut Entity, .soft :: Bool) -> collisions.Entity => {
+    .position = &mut e^.position,
+    .velocity = &mut e^.velocity,
+    .angular_velocity = &mut e^.angular_velocity,
+    .radius_change_speed = if soft then e^.shell.radius_change_speed else 0,
+    .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
+    .radius = if soft then e^.shell.radius else e^.core.radius,
+    .inverse_mass = 1 / e^.mass,
+    .soft = if soft then :Some (
+        let props = (@current Assets.Ctx)^.config.player.shell.soft;
+        let t = lerp_t(e^.shell.min_radius, e^.shell.max_radius, e^.shell.radius);
+        { .spring_k = lerp(props.min_spring_k, props.max_spring_k, t) }
+    ) else :None
+};
+
 const emote = (
     self :: &mut Game,
     position :: Vec3,
@@ -687,16 +709,7 @@ const update_step = (
             |> ArrayList.iter
             |> std.iter.enumerate
     ) do (
-        let soft_collision_entity = {
-            .position = &mut entity^.position,
-            .velocity = &mut entity^.velocity,
-            .angular_velocity = &mut entity^.angular_velocity,
-            .radius_change_speed = entity^.shell.radius_change_speed,
-            .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
-            .radius = entity^.shell.radius,
-            .inverse_mass = 1,
-            .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
-        };
+        let soft_collision_entity = collision_entity(entity, .soft = true);
         if collisions.collide_and_react(
             soft_collision_entity,
             .mesh = &level_model^.collision_mesh,
@@ -705,16 +718,7 @@ const update_step = (
         ) is :Some collision then (
             entity^.collision = :Some collision;
         );
-        let hard_collision_entity = {
-            .position = &mut entity^.position,
-            .velocity = &mut entity^.velocity,
-            .angular_velocity = &mut entity^.angular_velocity,
-            .radius_change_speed = 0,
-            .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
-            .radius = entity^.core.radius,
-            .inverse_mass = 1,
-            .soft = :None,
-        };
+        let hard_collision_entity = collision_entity(entity, .soft = false);
         if collisions.collide_and_react(
             hard_collision_entity,
             .mesh = &level_model^.collision_mesh,
@@ -1594,19 +1598,9 @@ const handle_mmo = (self :: &mut Game) => (
                             |> Quat.normalize,
                     }
                 );
-                let entity = e => {
-                    .position = &mut e^.position,
-                    .velocity = &mut e^.velocity,
-                    .angular_velocity = &mut e^.angular_velocity,
-                    .radius_change_speed = 0,
-                    .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
-                    .radius = e^.shell.radius,
-                    .inverse_mass = 1 / e^.mass,
-                    .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
-                };
                 if collisions.collide_and_react_entities(
-                    entity(&mut self^.player),
-                    entity(&mut self^.beachball.current),
+                    collision_entity(&mut self^.player, .soft = false),
+                    collision_entity(&mut self^.beachball.current, .soft = false),
                     .delta_time,
                 ) is :Some result then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side = ref mut last_touched_side } then (
