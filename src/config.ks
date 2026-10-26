@@ -16,6 +16,7 @@ const Config = newtype {
             .scale_time :: Float32,
         },
         .max_speed :: Float32,
+        .jump_modifier :: Float32,
     },
 };
 

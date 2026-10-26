@@ -237,6 +237,7 @@ const Entity = newtype {
     .velocity :: &mut Vec3,
     .angular_velocity :: &mut Vec3,
     .radius_change_speed :: Float32,
+    .jump_modifier :: Float32,
     .radius :: Float32,
     .inverse_mass :: Float32,
     .soft :: Option.t[SoftEntity],
@@ -244,8 +245,7 @@ const Entity = newtype {
 
 const SoftEntity = newtype {
     .spring_k :: Float32,
-    .damp :: Float32,
-    .max_speed :: Float32,
+    .towards_normal_jump_k :: Float32,
 };
 
 const do_react_entities = (
@@ -256,14 +256,13 @@ const do_react_entities = (
     .friction_into_linear :: Float32,
     .delta_time :: Float32,
 ) -> CollisionResult => (
+    let jump_modifier = a.jump_modifier; # TODO
     let bounciness = properties^.bounciness;
-    let jump_modifier = 4;
     let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
     let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
     let relative_velocity = () => Vec3.sub(a.velocity^, b.velocity^);
     let radius_change_speed = a.radius_change_speed + b.radius_change_speed;
-    let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
-        - radius_change_speed * jump_modifier;
+    let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal);
     let bounce_rel_vel = Vec3.dot(relative_velocity(), collision.normal);
     if &a.soft |> Option.is_none and &b.soft |> Option.is_none then (
         a.position^ = Vec3.add(
@@ -301,18 +300,58 @@ const do_react_entities = (
     ) else (
         let soft_react = (a, b) => (
             if a.soft is :Some a_soft then (
-                let mut force = collision.penetration * a_soft.spring_k;
-                if velocity_along_normal > 0 then (
-                    force *= properties^.bounciness;
+                let mut normal_force = collision.penetration * a_soft.spring_k;
+                if velocity_along_normal > 0.001 then (
+                    normal_force *= properties^.bounciness;
+                    let target_jump_speed = radius_change_speed * jump_modifier;
+                    let velocity_diff_towards_jump = target_jump_speed - velocity_along_normal;
+                    if velocity_diff_towards_jump > 0 then (
+                        let time_until_jump = collision.penetration / velocity_along_normal;
+                        let acceleration_needed_to_jump = velocity_diff_towards_jump / time_until_jump;
+                        let force_acceleration = normal_force * a.inverse_mass;
+                        let acceleration = max(acceleration_needed_to_jump - force_acceleration, 0);
+                        let delta_time = min(delta_time, time_until_jump);
+                        # TODO what about b?
+                        a.velocity^ = Vec3.add(
+                            a.velocity^,
+                            Vec3.mul(collision.normal, acceleration * delta_time * ka),
+                        );
+                    );
                 );
-                let force = Vec3.mul(collision.normal, force);
+                let normal_force_vec = Vec3.mul(collision.normal, normal_force);
                 a.velocity^ = Vec3.add(
                     a.velocity^,
-                    Vec3.mul(force, a.inverse_mass * delta_time)
+                    Vec3.mul(normal_force_vec, a.inverse_mass * delta_time)
                 );
                 b.velocity^ = Vec3.add(
+                    b.velocity^,
+                    Vec3.mul(normal_force_vec, -b.inverse_mass * delta_time)
+                );
+                let relative_angular_velocity = Vec3.sub(a.angular_velocity^, b.angular_velocity^);
+                let relative_angular_velocity = Vec3.add(
+                    relative_angular_velocity,
+                    Vec3.div(Vec3.cross(Vec3.sub(a.velocity^, b.velocity^), collision.normal), a.radius),
+                );
+                let angular_force = Vec3.mul(
+                    Vec3.normalize_or_zero(relative_angular_velocity),
+                    -normal_force * properties^.friction,
+                );
+                a.angular_velocity^ = Vec3.add(
+                    a.angular_velocity^,
+                    Vec3.mul(angular_force, a.inverse_mass * delta_time),
+                );
+                b.angular_velocity^ = Vec3.add(
+                    b.angular_velocity^,
+                    Vec3.mul(angular_force, -b.inverse_mass * delta_time),
+                );
+                let angular_force = Vec3.mul(angular_force, friction_into_linear);
+                a.velocity^ = Vec3.sub(
                     a.velocity^,
-                    Vec3.mul(force, -b.inverse_mass * delta_time)
+                    Vec3.mul(Vec3.cross(angular_force, collision.normal), a.inverse_mass * delta_time),
+                );
+                b.velocity^ = Vec3.sub(
+                    b.velocity^,
+                    Vec3.mul(Vec3.cross(angular_force, collision.normal), -b.inverse_mass * delta_time),
                 );
             );
         );
@@ -392,11 +431,15 @@ const collide_and_react = (
     .delta_time :: Float32,
 ) -> Option.t[CollisionResult] => (
     if collide({ .position = entity.position^, .radius = entity.radius }, mesh) is :Some collision then (
+        let mut zero_pos = { 0, 0, 0 };
+        let mut zero_vel = { 0, 0, 0 };
+        let mut zero_ang = { 0, 0, 0 };
         let mesh_entity = {
-            .position = &mut { 0, 0, 0 },
-            .velocity = &mut { 0, 0, 0 },
-            .angular_velocity = &mut { 0, 0, 0 },
+            .position = &mut zero_pos,
+            .velocity = &mut zero_vel,
+            .angular_velocity = &mut zero_ang,
             .radius_change_speed = 0,
+            .jump_modifier = 0,
             .radius = 0,
             .inverse_mass = 0,
             .soft = :None,

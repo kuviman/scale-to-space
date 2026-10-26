@@ -1,20 +1,20 @@
 {
-    "time_scale": 0.2,
+    "time_scale": 1,
     "gravity": 50,
     "player": {
         "core": {
-            "radius": 0.1
+            "radius": 0.5
         },
         "shell": {
             "min_radius": 1,
             "max_radius": 2,
             "soft": {
                 "spring_k": 2000,
-                "damp": 0,
-                "max_speed": 0.04
+                "towards_normal_jump_k": 200
             },
             "scale_time": 0.2
         },
+        "jump_modifier": 4,
         "jump_height": 5,
         "max_speed": 200
     }

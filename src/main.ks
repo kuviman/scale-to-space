@@ -692,6 +692,7 @@ const update_step = (
             .velocity = &mut entity^.velocity,
             .angular_velocity = &mut entity^.angular_velocity,
             .radius_change_speed = entity^.shell.radius_change_speed,
+            .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
             .radius = entity^.shell.radius,
             .inverse_mass = 1,
             .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
@@ -709,6 +710,7 @@ const update_step = (
             .velocity = &mut entity^.velocity,
             .angular_velocity = &mut entity^.angular_velocity,
             .radius_change_speed = 0,
+            .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
             .radius = entity^.core.radius,
             .inverse_mass = 1,
             .soft = :None,
@@ -1547,7 +1549,7 @@ const handle_mmo = (self :: &mut Game) => (
             Entity.update_input(self, &mut self^.beachball.new, delta_time, beachball_input);
             self^.next_physics -= delta_time;
             while self^.next_physics < -0.0001 do (
-                const MAX_DISTANCE_A_FRAME = 0.2;
+                let MAX_DISTANCE_A_FRAME = self^.player.core.radius / 2;
                 let max_delta_time = MAX_DISTANCE_A_FRAME / max(Vec3.length(self^.player.velocity), 0.1);
                 let step = min(max_delta_time, -self^.next_physics);
                 self^.next_physics += step;
@@ -1597,6 +1599,7 @@ const handle_mmo = (self :: &mut Game) => (
                     .velocity = &mut e^.velocity,
                     .angular_velocity = &mut e^.angular_velocity,
                     .radius_change_speed = 0,
+                    .jump_modifier = (@current Assets.Ctx)^.config.player.jump_modifier,
                     .radius = e^.shell.radius,
                     .inverse_mass = 1 / e^.mass,
                     .soft = :Some (@current Assets.Ctx)^.config.player.shell.soft,
