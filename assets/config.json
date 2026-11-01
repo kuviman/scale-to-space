@@ -1,6 +1,7 @@
 {
     "min_physics_delta_time": 0,
     "time_scale": 1,
+    "time_scale_power": 0.5,
     "gravity": 50,
     "player": {
         "core": {

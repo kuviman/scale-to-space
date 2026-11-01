@@ -30,6 +30,9 @@ use (
         | :Antigravity {
             .active :: Bool,
         }
+        | :TimeScale {
+            .active :: Bool,
+        }
     );
 
     # { -112.411026, -195.230301, 8.988006 }
@@ -266,6 +269,9 @@ use (
                 |> Quat.normalize;
             match entity^.power with (
                 | :None => ()
+                | :TimeScale ref mut power => (
+                    power^.active = input.use_power;
+                )
                 | :Antigravity ref mut power => (
                     power^.active = input.use_power;
                 )
@@ -409,6 +415,7 @@ use (
         match power with (
             | :None => ()
             | :Antigravity _ => ()
+            | :TimeScale _ => ()
             | :BeachballVertical _ => ()
             | :Jetpack ref jet => (
                 Model.draw(
@@ -631,6 +638,7 @@ use (
         match entity^.power with (
             | :None => ()
             | :Antigravity _ => ()
+            | :TimeScale _ => ()
             | :BeachballVertical _ => ()
             | :Jetpack ref mut jet => (
                 if jet^.active then (
@@ -924,7 +932,9 @@ use (
                     .model_renderer = Model.Renderer.init(),
                     .player = reset_player(
                         .skin = 0,
-                        .power = :None,
+                        .power = :TimeScale {
+                            .active = false,
+                        },
                     ),
                     .beachball = reset_beachball(),
                     .other_players = OrdMap.new(),
@@ -1351,6 +1361,7 @@ use (
                             | :Parachute _ => "parachute"
                             | :Jetpack _ => "jetpack"
                             | :Antigravity _ => "antigravity"
+                            | :TimeScale _ => "time scale"
                             | :BeachballVertical _ => "beachball vertical hit"
                         );
                         geng.Font.draw(
@@ -1389,14 +1400,19 @@ use (
                 );
             ),
             .update = (self, delta_time) => with_return (
-                let delta_time = delta_time * self^.assets.config.time_scale;
                 with Assets.Ctx = &mut self^.assets;
                 # reload
                 self^.player.core.radius = self^.assets.config.player.core.radius;
                 self^.player.shell.min_radius = self^.assets.config.player.shell.min_radius;
                 self^.player.shell.max_radius = self^.assets.config.player.shell.max_radius;
 
-                let delta_time = min(delta_time, 0.050);
+                let mut delta_time = min(delta_time, 0.050);
+                delta_time * self^.assets.config.time_scale;
+                if self^.player.power is :TimeScale ref power then (
+                    if power^.active then (
+                        delta_time *= (@current Assets.Ctx)^.config.time_scale_power;
+                    );
+                );
                 self^.next_fire_particle -= delta_time;
                 if self^.next_fire_particle < 0 then (
                     self^.next_fire_particle = 1 / 5;

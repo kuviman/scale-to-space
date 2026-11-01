@@ -5,6 +5,7 @@ module:
 const Config = newtype {
     .min_physics_delta_time :: Float32,
     .time_scale :: Float32,
+    .time_scale_power :: Float32,
     .gravity :: Float32,
     .player :: {
         .core :: {
