@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nixpkgs-25-11.url = "github:NixOS/nixpkgs/nixos-25.11";
+    kast-lsp.url = "git+https://github.com/kast-lang/kast?ref=self-host&submodules=1";
     geng.url = "git+https://github.com/kast-lang/geng?submodules=1";
     # geng.url = "git+file:///home/kuviman/projects/kast-lang/geng?submodules=1";
     flake-utils.url = "github:numtide/flake-utils";
@@ -18,7 +19,6 @@
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
         pkgs = import inputs.nixpkgs { inherit system; };
         emscripten = pkgs-25-11.emscripten;
-        clang = pkgs.clang_22;
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
             (prev: {
@@ -136,6 +136,9 @@
             {
               packages = [
                 inputs.geng.packages.${system}.geng
+                (pkgs.writeShellScriptBin "kast-lsp" ''
+                  exec ${inputs.kast-lsp.packages.${system}.kast}/bin/kast lsp "$@"
+                '')
                 rlwrap
                 nixfmt
                 nodejs
