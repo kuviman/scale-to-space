@@ -11,3 +11,17 @@ use (
 
 # use (import "env://GENG_PATH/src/_lib.ks").*;
 
+const sqr = [T] (x :: T) -> T => x * x;
+
+const solve_quadratic = (
+    a :: Float32,
+    b :: Float32,
+    c :: Float32,
+) -> { Float32, Float32 } => (
+    let d = b * b - 4 * a * c;
+    let sqrt_d = math.sqrt(max(d, 0));
+    {
+        (-b - sqrt_d) / (2 * a),
+        (-b + sqrt_d) / (2 * a),
+    }
+);

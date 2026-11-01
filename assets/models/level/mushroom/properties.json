@@ -3,6 +3,6 @@
     "particle_t": 0,
     "particle_spread": 1,
     "bounciness": 0.8,
-    "friction": 0.2,
+    "friction": 0.9,
     "animated": false
 }

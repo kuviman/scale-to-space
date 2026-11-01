@@ -60,40 +60,32 @@ const Model = (
         let program = &renderer^.program;
         program |> ugli.Program.@"use";
 
-        ugli.check_error();
-
         let mut draw_state = ugli.DrawState.init();
         let draw_state = &mut draw_state;
-        ugli.check_error();
-
         program
             |> ugli.set_uniform(
                 "u_time",
                 geng.time_since_start(),
                 draw_state
             );
-        ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_animated",
                 if animated then 1 else 0 :: Float32,
                 draw_state
             );
-        ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_model_matrix",
                 matrix,
                 draw_state
             );
-        ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_view_matrix",
                 camera^.view_matrix,
                 draw_state
             );
-        ugli.check_error();
         program
             |> ugli.set_uniform(
                 "u_projection_matrix",
@@ -155,11 +147,7 @@ const Model = (
                 (@current PlayerCtx).volleyball_radius,
                 draw_state
             );
-        ugli.check_error();
-        ugli.check_error();
         program |> ugli.set_vertex_data_source(&model^.buffer);
-        ugli.check_error();
         gl.draw_arrays(gl.TRIANGLES, 0, model^.buffer.length);
-        ugli.check_error();
     );
 );
