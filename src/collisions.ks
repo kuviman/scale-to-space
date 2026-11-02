@@ -81,13 +81,6 @@ const chunk_box = (from :: ChunkCoord, to :: ChunkCoord) -> std.iter.Iterable[Ch
     ),
 };
 
-const floor = (x :: Float32) -> Int32 => (
-    @native "floorf(\(x))"
-);
-const ceil = (x :: Float32) -> Int32 => (
-    @native "ceilf(\(x))"
-);
-
 impl Mesh as module = (
     module:
 
@@ -98,14 +91,14 @@ impl Mesh as module = (
             if i % 1000 == 0 then yield();
             i += 1;
             let from = {
-                floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             let to = {
-                ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             for co in chunk_box(from, to) do (
                 let chunk_center = Vec3.mul({
@@ -195,14 +188,14 @@ const collide = (entity :: Entity, mesh :: &Mesh) -> Option.t[Collision] => with
         .point = { 0, 0, 0 },
     };
     let from = {
-        floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
-        floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
-        floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
     };
     let to = {
-        ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
-        ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
-        ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
     };
     for co in chunk_box(from, to) do (
         if &mesh^.chunks |> OrdMap.get(&co) is :Some chunk then (
@@ -255,6 +248,8 @@ const JumpGraph = newtype {
     .amplitude :: Float32,
     .w :: Float32,
     .time_offset :: Float32,
+    .bounciness :: Float32,
+    .rest :: Float32,
 };
 
 impl JumpGraph as module = (
@@ -263,13 +258,14 @@ impl JumpGraph as module = (
         self :: JumpGraph,
         t :: Float32,
     ) -> Float32 => (
-        self.amplitude * math.cos(self.w * t + self.time_offset)
+        self.amplitude * math.cos(self.w * t + self.time_offset) * math.pow(self.bounciness, self.w / PI * t) + self.rest
     );
     const derivative_at = (
         self :: JumpGraph,
         t :: Float32,
     ) -> Float32 => (
-        -self.amplitude * self.w * math.sin(self.w * t + self.time_offset)
+        -self.amplitude * self.w * math.sin(self.w * t + self.time_offset) * math.pow(self.bounciness, self.w / PI * t)
+        + self.amplitude * math.cos(self.w * t + self.time_offset) * self.w / PI * math.pow(self.bounciness, self.w / PI * t) * math.log(self.bounciness)
     );
 );
 
@@ -334,17 +330,19 @@ const do_react_entities = (
                 let jump_graph :: JumpGraph = (
                     let pos = -collision.penetration;
                     # spring_k * dist = force = mass * acc = mass * dist / time^2
-                    # spring_k = mass / time^2
+                    # spring_k = )mass / time^2
                     # w2 :: 1/time^2
                     # w :: 1/time
                     let w2 = a_soft.spring_k * (a.inverse_mass + b.inverse_mass);
-                    let pos_relative_to_rest = pos - acceleration_along_normal / w2;
+                    let w = math.sqrt(w2);
+                    let rest = acceleration_along_normal / w2;
+                    let pos_relative_to_rest = pos - rest;
                     # velocity_along_normal :: dist^2 / time^2
                     let amplitude = math.sqrt(
-                        sqr(pos_relative_to_rest)
-                        + sqr(velocity_along_normal) / w2
+                        math.sqr(pos_relative_to_rest)
+                        + math.sqr(pos_relative_to_rest * w / PI * math.log(bounciness) - velocity_along_normal) / w2
                     );
-                    let mut time_offset = @native "acosf(\(pos_relative_to_rest / amplitude))";
+                    let mut time_offset = math.acos(pos_relative_to_rest / amplitude);
                     if velocity_along_normal > 0 then (
                         time_offset = 2 * PI - time_offset;
                     );
@@ -353,62 +351,67 @@ const do_react_entities = (
                             .pos,
                             .pos_relative_to_rest,
                             .w2,
-                            .rest = acceleration_along_normal / w2,
+                            .rest,
                         });
                     );
                     {
                         .amplitude,
-                        .w = math.sqrt(w2),
+                        .w,
                         .time_offset,
+                        .bounciness,
+                        .rest,
                     }
                 );
                 let time_until_jump = (
-                    3 * PI / 2 - jump_graph.time_offset
-                ) / jump_graph.w;
+                    let highest_point_time = (2 * PI - jump_graph.time_offset) / jump_graph.w;
+                    dbg.print({ .highest_point_time });
+                    binary_search(
+                        ._in = 0,
+                        .out = highest_point_time,
+                        .is_in = t => jump_graph |> JumpGraph.at(t) <= 0,
+                    )
+                );
                 let contact_delta_time = min(delta_time, time_until_jump);
                 let expected_velocity_along_normal_next_frame = jump_graph
                     |> JumpGraph.derivative_at(contact_delta_time);
-                let mut normal_acceleration = (
+                let mut target_normal_acceleration = (
                     expected_velocity_along_normal_next_frame
                     - velocity_along_normal
                 ) / delta_time;
 
-                if velocity_along_normal > 0 then (
-                    normal_acceleration *= properties^.bounciness;
-                );
                 let target_jump_speed = radius_change_speed * jump_modifier;
                 if target_jump_speed > APPROX_ZERO then (
                     let velocity_diff_towards_jump = target_jump_speed - velocity_along_normal;
                     if velocity_diff_towards_jump > 0 then (
                         let time_until_jump = max(delta_time, time_until_jump);
                         let acceleration_needed_to_jump = velocity_diff_towards_jump / time_until_jump;
-                        normal_acceleration = max(
+                        target_normal_acceleration = max(
                             acceleration_needed_to_jump,
-                            normal_acceleration,
+                            target_normal_acceleration,
                         );
                     );
                 );
-                @comment_out (
-                    dbg.print({
-                        .jump_graph,
-                        .time_until_jump,
-                        .delta_time,
-                        .contact_delta_time,
-                        .acceleration_along_normal,
-                        .velocity_along_normal,
-                        .normal_acceleration,
-                        .acc_diff = normal_acceleration - acceleration_along_normal,
-                        .expected_pen_next_frame = jump_graph |> JumpGraph.at(contact_delta_time),
-                        .expected_velocity_along_normal_next_frame,
-                        .zero = jump_graph |> JumpGraph.at(time_until_jump),
-                        .penetration = collision.penetration,
-                        .graph_0 = jump_graph |> JumpGraph.at(0),
-                        .graph_der_0 = jump_graph |> JumpGraph.derivative_at(0),
-                    });
-                );
+                let normal_acceleration = target_normal_acceleration - acceleration_along_normal;
+                if normal_acceleration < 0 then return;
+                dbg.print({
+                    .jump_graph,
+                    .time_until_jump,
+                    .delta_time,
+                    .contact_delta_time,
+                    .acceleration_along_normal,
+                    .velocity_along_normal,
+                    .target_normal_acceleration,
+                    .normal_acceleration,
+                    .expected_pen_next_frame = jump_graph |> JumpGraph.at(contact_delta_time),
+                    .expected_velocity_along_normal_next_frame,
+                    .zero = jump_graph |> JumpGraph.at(time_until_jump),
+                    .penetration = collision.penetration,
+                    .graph_0 = jump_graph |> JumpGraph.at(0),
+                    .graph_der_0 = jump_graph |> JumpGraph.derivative_at(0),
+                });
                 let normal_acceleration_vec = Vec3.mul(
                     collision.normal,
-                    normal_acceleration - acceleration_along_normal,
+                    normal_acceleration,
                 );
                 a.acceleration^ = Vec3.add(
                     a.acceleration^,

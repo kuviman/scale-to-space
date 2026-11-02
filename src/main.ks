@@ -784,7 +784,7 @@ use (
         );
         entity^.position = Vec3.add(
             entity^.position,
-            Vec3.mul(entity^.acceleration, sqr(delta_time) / 2),
+            Vec3.mul(entity^.acceleration, math.sqr(delta_time) / 2),
         );
         entity^.velocity = Vec3.add(
             entity^.velocity,
