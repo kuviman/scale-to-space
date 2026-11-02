@@ -718,10 +718,12 @@ use (
                     entity^.collision = :Some collision;
                 );
             );
-            dbg.print({
-                .collisions = &collisions_to_apply |> ArrayList.length,
-                .total_weight,
-            });
+            @comment_out (
+                dbg.print({
+                    .collisions = &collisions_to_apply |> ArrayList.length,
+                    .total_weight,
+                });
+            );
             for collision in collisions_to_apply |> ArrayList.into_iter do (
                 collisions.apply(soft_collision_entity, :None, collision, collision.penetration / total_weight);
             );
