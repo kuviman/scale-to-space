@@ -335,11 +335,8 @@ use (
         .inverse_mass = 1 / e^.mass,
         .soft = if soft then :Some (
             let props = (@current Assets.Ctx)^.config.player.shell.soft;
-            @comment_out (
-                let t = lerp_t(e^.shell.min_radius, e^.shell.max_radius, e^.shell.radius);
-                { .spring_k = lerp(props.min_spring_k, props.max_spring_k, t) }
-            );
-            props
+            let t = lerp_t(e^.shell.min_radius, e^.shell.max_radius, e^.shell.radius);
+            { .spring_k = lerp(props.min_spring_k, props.max_spring_k, t) }
         ) else :None
     };
 
@@ -699,28 +696,49 @@ use (
                 );
             )
         );
-        entity^.collision = :None;
+        (
+            let soft_collision_entity = collision_entity(entity, .soft = true);
+            entity^.collision = :None;
+            let mut collisions_to_apply = ArrayList.new();
+            let mut total_weight = 0;
+            for { type_index, level_model } in (
+                &self^.assets.models.level
+                    |> ArrayList.iter
+                    |> std.iter.enumerate
+            ) do (
+                if collisions.collide_and_react(
+                    soft_collision_entity,
+                    .mesh = &level_model^.collision_mesh,
+                    .properties = &level_model^.properties,
+                    .delta_time,
+                ) is :Some collision then (
+                    # TODO volume?
+                    total_weight += collision.penetration;
+                    &mut collisions_to_apply |> ArrayList.push_back(collision);
+                    entity^.collision = :Some collision;
+                );
+            );
+            dbg.print({
+                .collisions = &collisions_to_apply |> ArrayList.length,
+                .total_weight,
+            });
+            for collision in collisions_to_apply |> ArrayList.into_iter do (
+                collisions.apply(soft_collision_entity, :None, collision, collision.penetration / total_weight);
+            );
+        );
+        let hard_collision_entity = collision_entity(entity, .soft = false);
         for { type_index, level_model } in (
             &self^.assets.models.level
                 |> ArrayList.iter
                 |> std.iter.enumerate
         ) do (
-            let soft_collision_entity = collision_entity(entity, .soft = true);
-            if collisions.collide_and_react(
-                soft_collision_entity,
-                .mesh = &level_model^.collision_mesh,
-                .properties = &level_model^.properties,
-                .delta_time,
-            ) is :Some collision then (
-                entity^.collision = :Some collision;
-            );
-            let hard_collision_entity = collision_entity(entity, .soft = false);
             if collisions.collide_and_react(
                 hard_collision_entity,
                 .mesh = &level_model^.collision_mesh,
                 .properties = &level_model^.properties,
                 .delta_time,
             ) is :Some collision then (
+                collisions.apply(hard_collision_entity, :None, collision, 1);
                 if type_index == 4 and score_beachball then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side } then (
                         self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = 0 };
