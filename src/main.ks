@@ -93,6 +93,7 @@ use (
                 self^.skin,
                 self^.position,
                 self^.velocity,
+                self^.core.radius,
                 self^.shell.radius,
                 self^.flat_rot,
                 self^.rotation,
@@ -360,6 +361,7 @@ use (
         skin :: Int32,
         position :: Vec3,
         velocity :: Vec3,
+        core_scale :: Float32,
         scale :: Float32,
         flat_rot :: Angle,
         rotation :: Quat,
@@ -391,7 +393,14 @@ use (
             let matrix = Mat4.translate(position)
                 |> Mat4.mul_mat(Mat4.scale_uniform(scale))
                 |> Mat4.mul_mat(Quat.into_mat4(rotation));
-            if volley then (
+            if skin == (&assets^.models.skins |> ArrayList.length) - 1 then (
+                let model = &assets^.models.skins.[skin];
+                Model.draw(model, false, matrix |> Mat4.mul_mat(Mat4.scale_uniform(core_scale / scale)));
+                @native "glCullFace(GL_FRONT)";
+                Model.draw(model, false, matrix);
+                @native "glCullFace(GL_BACK)";
+                Model.draw(model, false, matrix);
+            ) else if volley then (
                 @native "glCullFace(GL_FRONT)";
                 Model.draw(
                     &assets^.volleyball,
