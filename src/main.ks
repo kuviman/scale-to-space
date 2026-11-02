@@ -93,6 +93,7 @@ use (
                 self^.skin,
                 self^.position,
                 self^.velocity,
+                self^.core.radius,
                 self^.shell.radius,
                 self^.flat_rot,
                 self^.rotation,
@@ -162,7 +163,7 @@ use (
                         ),
                         entity^.velocity.2,
                     };
-                    let air_control = 0.5;
+                    let air_control = (@current Assets.Ctx)^.config.player.air_control;
                     entity^.acceleration = Vec3.add(
                         entity^.acceleration,
                         Vec3.mul(
@@ -334,11 +335,8 @@ use (
         .inverse_mass = 1 / e^.mass,
         .soft = if soft then :Some (
             let props = (@current Assets.Ctx)^.config.player.shell.soft;
-            @comment_out (
-                let t = lerp_t(e^.shell.min_radius, e^.shell.max_radius, e^.shell.radius);
-                { .spring_k = lerp(props.min_spring_k, props.max_spring_k, t) }
-            );
-            props
+            let t = lerp_t(e^.shell.min_radius, e^.shell.max_radius, e^.shell.radius);
+            { .spring_k = lerp(props.min_spring_k, props.max_spring_k, t) }
         ) else :None
     };
 
@@ -360,6 +358,7 @@ use (
         skin :: Int32,
         position :: Vec3,
         velocity :: Vec3,
+        core_scale :: Float32,
         scale :: Float32,
         flat_rot :: Angle,
         rotation :: Quat,
@@ -391,7 +390,14 @@ use (
             let matrix = Mat4.translate(position)
                 |> Mat4.mul_mat(Mat4.scale_uniform(scale))
                 |> Mat4.mul_mat(Quat.into_mat4(rotation));
-            if volley then (
+            if skin == (&assets^.models.skins |> ArrayList.length) - 1 then (
+                let model = &assets^.models.skins.[skin];
+                Model.draw(model, false, matrix |> Mat4.mul_mat(Mat4.scale_uniform(core_scale / scale)));
+                @native "glCullFace(GL_FRONT)";
+                Model.draw(model, false, matrix);
+                @native "glCullFace(GL_BACK)";
+                Model.draw(model, false, matrix);
+            ) else if volley then (
                 @native "glCullFace(GL_FRONT)";
                 Model.draw(
                     &assets^.volleyball,
@@ -634,7 +640,6 @@ use (
         .score_beachball :: Bool,
     ) => with_return (
         if self^.dead then return;
-
         match entity^.power with (
             | :None => ()
             | :Antigravity _ => ()
@@ -691,66 +696,51 @@ use (
                 );
             )
         );
-
-        let old_z = entity^.position.2;
-        entity^.position = Vec3.add(
-            entity^.position,
-            Vec3.mul(entity^.velocity, delta_time),
-        );
-        entity^.position = Vec3.add(
-            entity^.position,
-            Vec3.mul(entity^.acceleration, sqr(delta_time) / 2),
-        );
-        entity^.velocity = Vec3.add(
-            entity^.velocity,
-            Vec3.mul(entity^.acceleration, delta_time),
-        );
-        entity^.acceleration = { 0, 0, 0 };
-        let new_z = entity^.position.2;
-        if old_z >= 0 and new_z < 0 or old_z < 0 and new_z >= 0 then (
-            let volume = min(abs(entity^.velocity.2) / player_speed * 2 - 1, 1);
-            if volume > 0.1 then (
-                for (_ :: Int32) in 0..5 do (
-                    let deg = std.random.gen_range(.min = 0, .max = 360);
-                    let particle = {
-                        .position = Vec3.add(
-                            entity^.position,
-                            { ...Vec2.rotate({ entity^.shell.radius, 0 }, Angle.from_degrees(deg)), 0 }
-                        ),
-                        .texture = self^.assets.textures.water_particle,
-                        .t = 0,
-                    };
-                    &mut self^.particles |> ArrayList.push_back(particle);
-                );
-                geng.audio.play_with(
-                    &self^.assets.sfx.splash,
-                    { .volume, .@"loop" = false },
+        (
+            let soft_collision_entity = collision_entity(entity, .soft = true);
+            entity^.collision = :None;
+            let mut collisions_to_apply = ArrayList.new();
+            let mut total_weight = 0;
+            for { type_index, level_model } in (
+                &self^.assets.models.level
+                    |> ArrayList.iter
+                    |> std.iter.enumerate
+            ) do (
+                if collisions.collide_and_react(
+                    soft_collision_entity,
+                    .mesh = &level_model^.collision_mesh,
+                    .properties = &level_model^.properties,
+                    .delta_time,
+                ) is :Some collision then (
+                    # TODO volume?
+                    total_weight += collision.penetration;
+                    &mut collisions_to_apply |> ArrayList.push_back(collision);
+                    entity^.collision = :Some collision;
                 );
             );
+            @comment_out (
+                dbg.print({
+                    .collisions = &collisions_to_apply |> ArrayList.length,
+                    .total_weight,
+                });
+            );
+            for collision in collisions_to_apply |> ArrayList.into_iter do (
+                collisions.apply(soft_collision_entity, :None, collision, collision.penetration / total_weight);
+            );
         );
-        let mut max_speed = (@current Assets.Ctx)^.config.player.max_speed;
-        entity^.collision = :None;
+        let hard_collision_entity = collision_entity(entity, .soft = false);
         for { type_index, level_model } in (
             &self^.assets.models.level
                 |> ArrayList.iter
                 |> std.iter.enumerate
         ) do (
-            let soft_collision_entity = collision_entity(entity, .soft = true);
-            if collisions.collide_and_react(
-                soft_collision_entity,
-                .mesh = &level_model^.collision_mesh,
-                .properties = &level_model^.properties,
-                .delta_time,
-            ) is :Some collision then (
-                entity^.collision = :Some collision;
-            );
-            let hard_collision_entity = collision_entity(entity, .soft = false);
             if collisions.collide_and_react(
                 hard_collision_entity,
                 .mesh = &level_model^.collision_mesh,
                 .properties = &level_model^.properties,
                 .delta_time,
             ) is :Some collision then (
+                collisions.apply(hard_collision_entity, :None, collision, 1);
                 if type_index == 4 and score_beachball then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side } then (
                         self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = 0 };
@@ -805,6 +795,45 @@ use (
                 );
             );
         );
+
+        let old_z = entity^.position.2;
+        # dbg.print({ .update_entity = entity });
+        entity^.position = Vec3.add(
+            entity^.position,
+            Vec3.mul(entity^.velocity, delta_time),
+        );
+        entity^.position = Vec3.add(
+            entity^.position,
+            Vec3.mul(entity^.acceleration, math.sqr(delta_time) / 2),
+        );
+        entity^.velocity = Vec3.add(
+            entity^.velocity,
+            Vec3.mul(entity^.acceleration, delta_time),
+        );
+        entity^.acceleration = { 0, 0, 0 };
+        let new_z = entity^.position.2;
+        if old_z >= 0 and new_z < 0 or old_z < 0 and new_z >= 0 then (
+            let volume = min(abs(entity^.velocity.2) / player_speed * 2 - 1, 1);
+            if volume > 0.1 then (
+                for (_ :: Int32) in 0..5 do (
+                    let deg = std.random.gen_range(.min = 0, .max = 360);
+                    let particle = {
+                        .position = Vec3.add(
+                            entity^.position,
+                            { ...Vec2.rotate({ entity^.shell.radius, 0 }, Angle.from_degrees(deg)), 0 }
+                        ),
+                        .texture = self^.assets.textures.water_particle,
+                        .t = 0,
+                    };
+                    &mut self^.particles |> ArrayList.push_back(particle);
+                );
+                geng.audio.play_with(
+                    &self^.assets.sfx.splash,
+                    { .volume, .@"loop" = false },
+                );
+            );
+        );
+        let mut max_speed = (@current Assets.Ctx)^.config.player.max_speed;
         entity^.velocity = Vec3.clamp_len(entity^.velocity, max_speed);
     );
 
@@ -1407,7 +1436,7 @@ use (
                 self^.player.shell.max_radius = self^.assets.config.player.shell.max_radius;
 
                 let mut delta_time = min(delta_time, 0.050);
-                delta_time * self^.assets.config.time_scale;
+                delta_time *= self^.assets.config.time_scale;
                 if self^.player.power is :TimeScale ref power then (
                     if power^.active then (
                         delta_time *= (@current Assets.Ctx)^.config.time_scale_power;

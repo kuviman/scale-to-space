@@ -81,13 +81,6 @@ const chunk_box = (from :: ChunkCoord, to :: ChunkCoord) -> std.iter.Iterable[Ch
     ),
 };
 
-const floor = (x :: Float32) -> Int32 => (
-    @native "floorf(\(x))"
-);
-const ceil = (x :: Float32) -> Int32 => (
-    @native "ceilf(\(x))"
-);
-
 impl Mesh as module = (
     module:
 
@@ -98,14 +91,14 @@ impl Mesh as module = (
             if i % 1000 == 0 then yield();
             i += 1;
             let from = {
-                floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                math.floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             let to = {
-                ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+                math.ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
             };
             for co in chunk_box(from, to) do (
                 let chunk_center = Vec3.mul({
@@ -195,14 +188,14 @@ const collide = (entity :: Entity, mesh :: &Mesh) -> Option.t[Collision] => with
         .point = { 0, 0, 0 },
     };
     let from = {
-        floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
-        floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
-        floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
+        math.floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
     };
     let to = {
-        ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
-        ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
-        ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
+        math.ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
     };
     for co in chunk_box(from, to) do (
         if &mesh^.chunks |> OrdMap.get(&co) is :Some chunk then (
@@ -227,11 +220,33 @@ const MeshProperties = newtype {
     .particle_spread :: Float32,
 };
 
+const Change = newtype {
+    .position :: Vec3,
+    .velocity :: Vec3,
+    .acceleration :: Vec3,
+    .angular_velocity :: Vec3,
+};
+
+const Change_add = (self :: &mut Change, other :: Change, k :: Float32) => (
+    self^.position = Vec3.add(self^.position, Vec3.mul(other.position, k));
+    self^.velocity = Vec3.add(self^.velocity, Vec3.mul(other.velocity, k));
+    self^.acceleration = Vec3.add(self^.acceleration, Vec3.mul(other.acceleration, k));
+    self^.angular_velocity = Vec3.add(self^.angular_velocity, Vec3.mul(other.angular_velocity, k));
+);
+
+const ZERO_CHANGE :: Change = {
+    .position = { 0, 0, 0 },
+    .velocity = { 0, 0, 0 },
+    .acceleration = { 0, 0, 0 },
+    .angular_velocity = { 0, 0, 0 },
+};
+
 const CollisionResult = newtype {
     .velocity_along_normal :: Float32,
     .normal :: Vec3,
     .penetration :: Float32,
     .point :: Vec3,
+    .change :: Change,
 };
 
 const Entity = newtype {
@@ -248,13 +263,14 @@ const Entity = newtype {
 
 const SoftEntity = newtype {
     .spring_k :: Float32,
-    .min_penetration_for_jump :: Float32,
 };
 
 const JumpGraph = newtype {
     .amplitude :: Float32,
     .w :: Float32,
     .time_offset :: Float32,
+    .bounciness :: Float32,
+    .rest :: Float32,
 };
 
 impl JumpGraph as module = (
@@ -263,13 +279,14 @@ impl JumpGraph as module = (
         self :: JumpGraph,
         t :: Float32,
     ) -> Float32 => (
-        self.amplitude * math.cos(self.w * t + self.time_offset)
+        self.amplitude * math.cos(self.w * t + self.time_offset) * math.pow(self.bounciness, self.w / PI * t) + self.rest
     );
     const derivative_at = (
         self :: JumpGraph,
         t :: Float32,
     ) -> Float32 => (
-        self.amplitude * self.w * math.sin(self.w * t + self.time_offset)
+        -self.amplitude * self.w * math.sin(self.w * t + self.time_offset) * math.pow(self.bounciness, self.w / PI * t)
+        + self.amplitude * math.cos(self.w * t + self.time_offset) * self.w / PI * math.pow(self.bounciness, self.w / PI * t) * math.log(self.bounciness)
     );
 );
 
@@ -281,115 +298,139 @@ const do_react_entities = (
     .friction_into_linear :: Float32,
     .delta_time :: Float32,
 ) -> CollisionResult => (
+    let mut change = ZERO_CHANGE;
     # TODO
     let jump_modifier = a.jump_modifier;
     let bounciness = properties^.bounciness;
-    let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
-    let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
-    let relative_velocity = () => Vec3.sub(a.velocity^, b.velocity^);
     let radius_change_speed = a.radius_change_speed + b.radius_change_speed;
-    let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal);
-    let bounce_rel_vel = Vec3.dot(relative_velocity(), collision.normal);
+    let relative_velocity = Vec3.sub(a.velocity^, b.velocity^);
+    let velocity_along_normal = Vec3.dot(relative_velocity, collision.normal);
+    let bounce_rel_vel = velocity_along_normal;
     if &a.soft |> Option.is_none and &b.soft |> Option.is_none then (
-        a.position^ = Vec3.add(
-            a.position^,
-            Vec3.mul(collision.normal, collision.penetration * ka),
+        change.position = Vec3.add(
+            change.position,
+            Vec3.mul(collision.normal, collision.penetration),
         );
-        b.position^ = Vec3.add(
-            b.position^,
-            Vec3.mul(collision.normal, collision.penetration * kb),
-        );
-        if bounce_rel_vel < 0 then (
-            a.velocity^ = Vec3.add(
-                a.velocity^,
-                Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * ka),
+        let velocity_change = if bounce_rel_vel < 0 then (
+            let velocity_change = -(1 + bounciness) * bounce_rel_vel;
+            change.velocity = Vec3.add(
+                change.velocity,
+                Vec3.mul(collision.normal, velocity_change),
             );
-            b.velocity^ = Vec3.add(
-                b.velocity^,
-                Vec3.mul(collision.normal, -(1 + bounciness) * bounce_rel_vel * kb),
-            );
-        );
+            velocity_change
+        ) else 0;
         (
-            let velocity_along_normal = Vec3.dot(relative_velocity(), collision.normal)
-            - radius_change_speed * jump_modifier;
+            let velocity_along_normal = (
+                velocity_along_normal
+                + velocity_change
+                - radius_change_speed * jump_modifier
+            );
             if velocity_along_normal < 0 then (
-                a.velocity^ = Vec3.add(
-                    a.velocity^,
-                    Vec3.mul(collision.normal, -velocity_along_normal * ka),
-                );
-                b.velocity^ = Vec3.add(
-                    b.velocity^,
-                    Vec3.mul(collision.normal, -velocity_along_normal * kb),
+                change.velocity = Vec3.add(
+                    change.velocity,
+                    Vec3.mul(collision.normal, -velocity_along_normal),
                 );
             );
         );
     ) else (
         let soft_react = (a, b) => with_return (
-            if collision.penetration <= APPROX_ZERO then return;
+            if collision.penetration <= APPROX_ZERO then return ZERO_CHANGE;
+            let mut change = ZERO_CHANGE;
             if a.soft is :Some a_soft then (
                 let acceleration_along_normal = Vec3.dot(
                     collision.normal,
                     Vec3.sub(a.acceleration^, b.acceleration^),
                 );
                 let jump_graph :: JumpGraph = (
+                    let pos = -collision.penetration;
+                    # spring_k * dist = force = mass * acc = mass * dist / time^2
+                    # spring_k = )mass / time^2
+                    # w2 :: 1/time^2
+                    # w :: 1/time
                     let w2 = a_soft.spring_k * (a.inverse_mass + b.inverse_mass);
-                    let pos_relative_to_rest = (
-                        collision.penetration
-                        - acceleration_along_normal / w2
-                    );
+                    let w = math.sqrt(w2);
+                    let rest = acceleration_along_normal / w2;
+                    let pos_relative_to_rest = pos - rest;
+                    # velocity_along_normal :: dist^2 / time^2
                     let amplitude = math.sqrt(
-                        sqr(pos_relative_to_rest)
-                        + sqr(velocity_along_normal) / w2
+                        math.sqr(pos_relative_to_rest)
+                        + math.sqr(pos_relative_to_rest * w / PI * math.log(bounciness) - velocity_along_normal) / w2
                     );
-                    let time_offset = @native "acosf(\(pos_relative_to_rest / amplitude))";
+                    let mut time_offset = math.acos(pos_relative_to_rest / amplitude);
+                    if velocity_along_normal > 0 then (
+                        time_offset = 2 * PI - time_offset;
+                    );
+                    @comment_out (
+                        dbg.print({
+                            .pos,
+                            .pos_relative_to_rest,
+                            .w2,
+                            .rest,
+                        });
+                    );
                     {
                         .amplitude,
-                        .w = math.sqrt(w2),
+                        .w,
                         .time_offset,
+                        .bounciness,
+                        .rest,
                     }
                 );
                 let time_until_jump = (
-                    let mut solution = PI / 2 - jump_graph.time_offset;
-                    while solution - PI > 0 do (
-                        solution -= PI;
-                    );
-                    while solution < 0 do (
-                        solution += PI
-                    );
-                    solution
-                ) / jump_graph.w;
+                    let highest_point_time = (2 * PI - jump_graph.time_offset) / jump_graph.w;
+                    # dbg.print({ .highest_point_time });
+                    binary_search(
+                        ._in = 0,
+                        .out = highest_point_time,
+                        .is_in = t => jump_graph |> JumpGraph.at(t) <= 0,
+                    )
+                );
                 let contact_delta_time = min(delta_time, time_until_jump);
-                let mut normal_acceleration = (
-                    (jump_graph |> JumpGraph.derivative_at(contact_delta_time))
-                    - (jump_graph |> JumpGraph.derivative_at(0))
+                let expected_velocity_along_normal_next_frame = jump_graph
+                    |> JumpGraph.derivative_at(contact_delta_time);
+                let mut target_normal_acceleration = (
+                    expected_velocity_along_normal_next_frame
+                    - velocity_along_normal
                 ) / delta_time;
 
-                if velocity_along_normal > 0 then (
-                    normal_acceleration *= properties^.bounciness;
-                );
                 let target_jump_speed = radius_change_speed * jump_modifier;
                 if target_jump_speed > APPROX_ZERO then (
                     let velocity_diff_towards_jump = target_jump_speed - velocity_along_normal;
                     if velocity_diff_towards_jump > 0 then (
                         let time_until_jump = max(delta_time, time_until_jump);
                         let acceleration_needed_to_jump = velocity_diff_towards_jump / time_until_jump;
-                        normal_acceleration = max(
+                        target_normal_acceleration = max(
                             acceleration_needed_to_jump,
-                            normal_acceleration,
+                            target_normal_acceleration,
                         );
                     );
                 );
-                let normal_acceleration_vec = Vec3.mul(
-                    collision.normal,
-                    normal_acceleration,
+                let normal_acceleration = target_normal_acceleration - acceleration_along_normal;
+                if normal_acceleration < 0 then return ZERO_CHANGE;
+                @comment_out (
+                    dbg.print({
+                        .jump_graph,
+                        .time_until_jump,
+                        .delta_time,
+                        .contact_delta_time,
+                        .acceleration_along_normal,
+                        .velocity_along_normal,
+                        .target_normal_acceleration,
+                        .normal_acceleration,
+                        .expected_pen_next_frame = jump_graph |> JumpGraph.at(contact_delta_time),
+                        .expected_velocity_along_normal_next_frame,
+                        .zero = jump_graph |> JumpGraph.at(time_until_jump),
+                        .penetration = collision.penetration,
+                        .graph_0 = jump_graph |> JumpGraph.at(0),
+                        .graph_der_0 = jump_graph |> JumpGraph.derivative_at(0),
+                    });
                 );
-                a.acceleration^ = Vec3.add(
-                    a.acceleration^,
-                    Vec3.mul(normal_acceleration_vec, ka),
-                );
-                b.acceleration^ = Vec3.add(
-                    b.acceleration^,
-                    Vec3.mul(normal_acceleration_vec, kb),
+                change.acceleration = Vec3.add(
+                    change.acceleration,
+                    Vec3.mul(
+                        collision.normal,
+                        normal_acceleration,
+                    ),
                 );
                 let relative_angular_velocity = Vec3.sub(a.angular_velocity^, b.angular_velocity^);
                 let relative_angular_velocity = Vec3.add(
@@ -403,30 +444,22 @@ const do_react_entities = (
                         Vec3.length(relative_angular_velocity),
                     ),
                 );
-                a.angular_velocity^ = Vec3.add(
-                    a.angular_velocity^,
-                    Vec3.mul(angular_velocity_change, ka),
+                change.angular_velocity = Vec3.add(
+                    change.angular_velocity,
+                    angular_velocity_change,
                 );
-                b.angular_velocity^ = Vec3.add(
-                    b.angular_velocity^,
-                    Vec3.mul(angular_velocity_change, kb),
-                );
-                let friction_linear_velocity_change = Vec3.cross(
-                    Vec3.mul(angular_velocity_change, friction_into_linear),
-                    collision.normal,
-                );
-                a.velocity^ = Vec3.sub(
-                    a.velocity^,
-                    Vec3.mul(friction_linear_velocity_change, ka),
-                );
-                b.velocity^ = Vec3.sub(
-                    b.velocity^,
-                    Vec3.mul(friction_linear_velocity_change, kb),
+                change.velocity = Vec3.sub(
+                    change.velocity,
+                    Vec3.cross(
+                        Vec3.mul(angular_velocity_change, friction_into_linear),
+                        collision.normal,
+                    ),
                 );
             );
+            change
         );
-        soft_react(a, b);
-        soft_react(b, a);
+        &mut change |> Change_add(soft_react(a, b), +1);
+        &mut change |> Change_add(soft_react(b, a), -1);
     );
     @comment_out (
         let relative_angular_velocity = Vec3.sub(a.angular_velocity^, b.angular_velocity^);
@@ -461,6 +494,7 @@ const do_react_entities = (
         .normal = collision.normal,
         .penetration = collision.penetration,
         .point = collision.point,
+        .change,
     }
 );
 
@@ -492,6 +526,37 @@ const collide_and_react_entities = (
             .delta_time,
         )
     ) else :None
+);
+
+const apply = (a :: Entity, b :: Option.t[Entity], collision :: CollisionResult, k :: Float32) => (
+    let mut zero_pos = { 0, 0, 0 };
+    let mut zero_vel = { 0, 0, 0 };
+    let mut zero_acc = { 0, 0, 0 };
+    let mut zero_ang = { 0, 0, 0 };
+    let b = match b with (
+        | :Some b => b
+        | :None => {
+            .position = &mut zero_pos,
+            .velocity = &mut zero_vel,
+            .acceleration = &mut zero_acc,
+            .angular_velocity = &mut zero_ang,
+            .radius_change_speed = 0,
+            .jump_modifier = 0,
+            .radius = 0,
+            .inverse_mass = 0,
+            .soft = :None,
+        }
+    );
+    let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    a.position^ = Vec3.add(a.position^, Vec3.mul(collision.change.position, ka));
+    b.position^ = Vec3.add(b.position^, Vec3.mul(collision.change.position, kb));
+    a.velocity^ = Vec3.add(a.velocity^, Vec3.mul(collision.change.velocity, ka));
+    b.velocity^ = Vec3.add(b.velocity^, Vec3.mul(collision.change.velocity, kb));
+    a.acceleration^ = Vec3.add(a.acceleration^, Vec3.mul(collision.change.acceleration, ka));
+    b.acceleration^ = Vec3.add(b.acceleration^, Vec3.mul(collision.change.acceleration, kb));
+    a.angular_velocity^ = Vec3.add(a.angular_velocity^, Vec3.mul(collision.change.angular_velocity, ka));
+    b.angular_velocity^ = Vec3.add(b.angular_velocity^, Vec3.mul(collision.change.angular_velocity, kb));
 );
 
 const collide_and_react = (

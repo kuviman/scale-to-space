@@ -232,6 +232,7 @@ const Assets = (
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/temptic"));
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/trumpet"));
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/gondo"));
+                &mut list |> ArrayList.push_back(Model.load("assets/models/player/debug"));
                 list
             ),
             .level = (
@@ -252,15 +253,20 @@ const Assets = (
             .level_nocollisions = (
                 let mut list = ArrayList.new();
                 &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/leaves"));
+                    "assets/models/level/nocollisions/leaves"
+                ));
                 &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/outline"));
+                    "assets/models/level/nocollisions/outline"
+                ));
                 &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/flag"));
+                    "assets/models/level/nocollisions/flag"
+                ));
                 &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/secret"));
+                    "assets/models/level/nocollisions/secret"
+                ));
                 &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/playground"));
+                    "assets/models/level/nocollisions/playground"
+                ));
                 list
             ),
             .jetpack = Model.load("assets/models/jetpack"),

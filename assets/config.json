@@ -4,6 +4,7 @@
     "time_scale_power": 0.5,
     "gravity": 50,
     "player": {
+        "air_control": 0.5,
         "core": {
             "radius": 0.5
         },
@@ -11,8 +12,8 @@
             "min_radius": 1,
             "max_radius": 2,
             "soft": {
-                "spring_k": 2000,
-                "min_penetration_for_jump": 0.001
+                "min_spring_k": 200,
+                "max_spring_k": 76
             },
             "scale_time": 0.2
         },
