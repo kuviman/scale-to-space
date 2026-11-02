@@ -269,7 +269,7 @@ impl JumpGraph as module = (
         self :: JumpGraph,
         t :: Float32,
     ) -> Float32 => (
-        self.amplitude * self.w * math.sin(self.w * t + self.time_offset)
+        -self.amplitude * self.w * math.sin(self.w * t + self.time_offset)
     );
 );
 
@@ -332,16 +332,30 @@ const do_react_entities = (
                     Vec3.sub(a.acceleration^, b.acceleration^),
                 );
                 let jump_graph :: JumpGraph = (
+                    let pos = -collision.penetration;
+                    # spring_k * dist = force = mass * acc = mass * dist / time^2
+                    # spring_k = mass / time^2
+                    # w2 :: 1/time^2
+                    # w :: 1/time
                     let w2 = a_soft.spring_k * (a.inverse_mass + b.inverse_mass);
-                    let pos_relative_to_rest = (
-                        collision.penetration
-                        - acceleration_along_normal / w2
-                    );
+                    let pos_relative_to_rest = pos - acceleration_along_normal / w2;
+                    # velocity_along_normal :: dist^2 / time^2
                     let amplitude = math.sqrt(
                         sqr(pos_relative_to_rest)
                         + sqr(velocity_along_normal) / w2
                     );
-                    let time_offset = @native "acosf(\(pos_relative_to_rest / amplitude))";
+                    let mut time_offset = @native "acosf(\(pos_relative_to_rest / amplitude))";
+                    if velocity_along_normal > 0 then (
+                        time_offset = 2 * PI - time_offset;
+                    );
+                    @comment_out (
+                        dbg.print({
+                            .pos,
+                            .pos_relative_to_rest,
+                            .w2,
+                            .rest = acceleration_along_normal / w2,
+                        });
+                    );
                     {
                         .amplitude,
                         .w = math.sqrt(w2),
@@ -349,19 +363,14 @@ const do_react_entities = (
                     }
                 );
                 let time_until_jump = (
-                    let mut solution = PI / 2 - jump_graph.time_offset;
-                    while solution - PI > 0 do (
-                        solution -= PI;
-                    );
-                    while solution < 0 do (
-                        solution += PI
-                    );
-                    solution
+                    3 * PI / 2 - jump_graph.time_offset
                 ) / jump_graph.w;
                 let contact_delta_time = min(delta_time, time_until_jump);
+                let expected_velocity_along_normal_next_frame = jump_graph
+                    |> JumpGraph.derivative_at(contact_delta_time);
                 let mut normal_acceleration = (
-                    (jump_graph |> JumpGraph.derivative_at(contact_delta_time))
-                    - (jump_graph |> JumpGraph.derivative_at(0))
+                    expected_velocity_along_normal_next_frame
+                    - velocity_along_normal
                 ) / delta_time;
 
                 if velocity_along_normal > 0 then (
@@ -379,9 +388,27 @@ const do_react_entities = (
                         );
                     );
                 );
+                @comment_out (
+                    dbg.print({
+                        .jump_graph,
+                        .time_until_jump,
+                        .delta_time,
+                        .contact_delta_time,
+                        .acceleration_along_normal,
+                        .velocity_along_normal,
+                        .normal_acceleration,
+                        .acc_diff = normal_acceleration - acceleration_along_normal,
+                        .expected_pen_next_frame = jump_graph |> JumpGraph.at(contact_delta_time),
+                        .expected_velocity_along_normal_next_frame,
+                        .zero = jump_graph |> JumpGraph.at(time_until_jump),
+                        .penetration = collision.penetration,
+                        .graph_0 = jump_graph |> JumpGraph.at(0),
+                        .graph_der_0 = jump_graph |> JumpGraph.derivative_at(0),
+                    });
+                );
                 let normal_acceleration_vec = Vec3.mul(
                     collision.normal,
-                    normal_acceleration,
+                    normal_acceleration - acceleration_along_normal,
                 );
                 a.acceleration^ = Vec3.add(
                     a.acceleration^,

@@ -4,6 +4,7 @@
     "time_scale_power": 0.5,
     "gravity": 50,
     "player": {
+        "air_control": 0.5,
         "core": {
             "radius": 0.5
         },

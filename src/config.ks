@@ -8,6 +8,7 @@ const Config = newtype {
     .time_scale_power :: Float32,
     .gravity :: Float32,
     .player :: {
+        .air_control :: Float32,
         .core :: {
             .radius :: Float32,
         },

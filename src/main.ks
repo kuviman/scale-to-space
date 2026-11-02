@@ -163,7 +163,7 @@ use (
                         ),
                         entity^.velocity.2,
                     };
-                    let air_control = 0.5;
+                    let air_control = (@current Assets.Ctx)^.config.player.air_control;
                     entity^.acceleration = Vec3.add(
                         entity^.acceleration,
                         Vec3.mul(
@@ -643,7 +643,6 @@ use (
         .score_beachball :: Bool,
     ) => with_return (
         if self^.dead then return;
-
         match entity^.power with (
             | :None => ()
             | :Antigravity _ => ()
@@ -700,44 +699,6 @@ use (
                 );
             )
         );
-
-        let old_z = entity^.position.2;
-        entity^.position = Vec3.add(
-            entity^.position,
-            Vec3.mul(entity^.velocity, delta_time),
-        );
-        entity^.position = Vec3.add(
-            entity^.position,
-            Vec3.mul(entity^.acceleration, sqr(delta_time) / 2),
-        );
-        entity^.velocity = Vec3.add(
-            entity^.velocity,
-            Vec3.mul(entity^.acceleration, delta_time),
-        );
-        entity^.acceleration = { 0, 0, 0 };
-        let new_z = entity^.position.2;
-        if old_z >= 0 and new_z < 0 or old_z < 0 and new_z >= 0 then (
-            let volume = min(abs(entity^.velocity.2) / player_speed * 2 - 1, 1);
-            if volume > 0.1 then (
-                for (_ :: Int32) in 0..5 do (
-                    let deg = std.random.gen_range(.min = 0, .max = 360);
-                    let particle = {
-                        .position = Vec3.add(
-                            entity^.position,
-                            { ...Vec2.rotate({ entity^.shell.radius, 0 }, Angle.from_degrees(deg)), 0 }
-                        ),
-                        .texture = self^.assets.textures.water_particle,
-                        .t = 0,
-                    };
-                    &mut self^.particles |> ArrayList.push_back(particle);
-                );
-                geng.audio.play_with(
-                    &self^.assets.sfx.splash,
-                    { .volume, .@"loop" = false },
-                );
-            );
-        );
-        let mut max_speed = (@current Assets.Ctx)^.config.player.max_speed;
         entity^.collision = :None;
         for { type_index, level_model } in (
             &self^.assets.models.level
@@ -814,6 +775,45 @@ use (
                 );
             );
         );
+
+        let old_z = entity^.position.2;
+        # dbg.print({ .update_entity = entity });
+        entity^.position = Vec3.add(
+            entity^.position,
+            Vec3.mul(entity^.velocity, delta_time),
+        );
+        entity^.position = Vec3.add(
+            entity^.position,
+            Vec3.mul(entity^.acceleration, sqr(delta_time) / 2),
+        );
+        entity^.velocity = Vec3.add(
+            entity^.velocity,
+            Vec3.mul(entity^.acceleration, delta_time),
+        );
+        entity^.acceleration = { 0, 0, 0 };
+        let new_z = entity^.position.2;
+        if old_z >= 0 and new_z < 0 or old_z < 0 and new_z >= 0 then (
+            let volume = min(abs(entity^.velocity.2) / player_speed * 2 - 1, 1);
+            if volume > 0.1 then (
+                for (_ :: Int32) in 0..5 do (
+                    let deg = std.random.gen_range(.min = 0, .max = 360);
+                    let particle = {
+                        .position = Vec3.add(
+                            entity^.position,
+                            { ...Vec2.rotate({ entity^.shell.radius, 0 }, Angle.from_degrees(deg)), 0 }
+                        ),
+                        .texture = self^.assets.textures.water_particle,
+                        .t = 0,
+                    };
+                    &mut self^.particles |> ArrayList.push_back(particle);
+                );
+                geng.audio.play_with(
+                    &self^.assets.sfx.splash,
+                    { .volume, .@"loop" = false },
+                );
+            );
+        );
+        let mut max_speed = (@current Assets.Ctx)^.config.player.max_speed;
         entity^.velocity = Vec3.clamp_len(entity^.velocity, max_speed);
     );
 
@@ -1416,7 +1416,7 @@ use (
                 self^.player.shell.max_radius = self^.assets.config.player.shell.max_radius;
 
                 let mut delta_time = min(delta_time, 0.050);
-                delta_time * self^.assets.config.time_scale;
+                delta_time *= self^.assets.config.time_scale;
                 if self^.player.power is :TimeScale ref power then (
                     if power^.active then (
                         delta_time *= (@current Assets.Ctx)^.config.time_scale_power;
