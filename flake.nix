@@ -18,6 +18,7 @@
         nix-filter = inputs.nix-filter.lib;
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
         pkgs = import inputs.nixpkgs { inherit system; };
+        geng = inputs.geng.packages.${system}.geng;
         emscripten = pkgs-25-11.emscripten;
         sdl3-win = with pkgs.pkgsCross.mingwW64;
           sdl3.overrideAttrs
@@ -38,13 +39,12 @@
               "deps"
               "src"
               "net"
-              ".justfile"
             ];
           };
-          nativeBuildInputs = [ kast just ];
+          nativeBuildInputs = [ geng ];
           buildPhase = ''
             export SERVER_ADDRESS="${SERVER_ADDRESS}"
-            KASTC=kast just build-c
+            geng transpile-to-c
           '';
           installPhase = ''
             mkdir -p $out
@@ -56,6 +56,7 @@
             libGL
             gcc
             pkgs.just
+            geng
           ];
           propagatedBuildInputs = [
             (glew.overrideAttrs {
@@ -114,13 +115,14 @@
           };
           buildPhase = ''
             mkdir -p target/compiled
-            KAST_PATH=${inputs.kast} just build-windows-do ${game-c-source}/main.c
+            geng exec just build-windows-do ${game-c-source}/main.c
           '';
           installPhase = ''
             set -e
             mkdir -p $out/bin
             cp target/compiled/main.exe $out/bin/ScaleToSpace.exe
             cp -r assets $out/bin/
+            cp -r ${geng}/assets $out/bin/assets/geng
           '';
         });
       in
@@ -135,7 +137,7 @@
           mkShell
             {
               packages = [
-                inputs.geng.packages.${system}.geng
+                geng
                 (pkgs.writeShellScriptBin "kast-lsp" ''
                   exec ${inputs.kast-lsp.packages.${system}.kast}/bin/kast lsp "$@"
                 '')

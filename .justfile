@@ -23,7 +23,7 @@ build-win:
     nix build '.?submodules=1#game-win'
 
 run-win *args:
-    just build-win && wine result/bin/ScaleToSpace.exe {{args}}
+    just build-win && cd result/bin && wine ScaleToSpace.exe {{args}}
 
 build:
     geng transpile-to-c
