@@ -172,44 +172,40 @@ const distance_to_face = (
     result |> Option.unwrap
 );
 
-const collide_face = (result :: &mut Collision, entity :: Entity, face :: &Face) => (
+const collide_face = (entity :: Entity, face :: &Face) -> Option.t[Collision] => (
     let { .normal, .distance } = distance_to_face(entity.position, face);
     if 0 < distance and distance < entity.radius then (
         let penetration = entity.radius - distance;
         let point = Vec3.sub(entity.position, Vec3.mul(normal, distance));
-        update(result, { .penetration, .normal, .point });
-    );
-);
-
-const collide = (entity :: Entity, mesh :: &Mesh) -> Option.t[Collision] => with_return (
-    let mut result :: Collision = {
-        .penetration = -1,
-        .normal = { 0, 0, 0 },
-        .point = { 0, 0, 0 },
-    };
-    let from = {
-        math.floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
-        math.floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
-        math.floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
-    };
-    let to = {
-        math.ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
-        math.ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
-        math.ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
-    };
-    for co in chunk_box(from, to) do (
-        if &mesh^.chunks |> OrdMap.get(&co) is :Some chunk then (
-            for face in &chunk^.faces |> ArrayList.iter do (
-                collide_face(&mut result, entity, face);
-            );
-        );
-    );
-    if result.penetration <= 0 then (
-        :None
+        :Some { .penetration, .normal, .point }
     ) else (
-        :Some result
+        :None
     )
 );
+
+const collide = (entity :: Entity, mesh :: &Mesh) -> std.iter.Iterable[Collision] => {
+    .iter = @move consumer => (
+        let from = {
+            math.floor((entity.position.0 - entity.radius) / CHUNK_SIZE),
+            math.floor((entity.position.1 - entity.radius) / CHUNK_SIZE),
+            math.floor((entity.position.2 - entity.radius) / CHUNK_SIZE),
+        };
+        let to = {
+            math.ceil((entity.position.0 + entity.radius) / CHUNK_SIZE),
+            math.ceil((entity.position.1 + entity.radius) / CHUNK_SIZE),
+            math.ceil((entity.position.2 + entity.radius) / CHUNK_SIZE),
+        };
+        for co in chunk_box(from, to) do (
+            if &mesh^.chunks |> OrdMap.get(&co) is :Some chunk then (
+                for face in &chunk^.faces |> ArrayList.iter do (
+                    if collide_face(entity, face) is :Some collision then (
+                        consumer(collision);
+                    );
+                );
+            );
+        );
+    ),
+};
 
 const MeshProperties = newtype {
     .bounciness :: Float32,
@@ -547,8 +543,8 @@ const apply = (a :: Entity, b :: Option.t[Entity], collision :: CollisionResult,
             .soft = :None,
         }
     );
-    let ka = a.inverse_mass / (a.inverse_mass + b.inverse_mass);
-    let kb = -b.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    let ka = k * a.inverse_mass / (a.inverse_mass + b.inverse_mass);
+    let kb = -k * b.inverse_mass / (a.inverse_mass + b.inverse_mass);
     a.position^ = Vec3.add(a.position^, Vec3.mul(collision.change.position, ka));
     b.position^ = Vec3.add(b.position^, Vec3.mul(collision.change.position, kb));
     a.velocity^ = Vec3.add(a.velocity^, Vec3.mul(collision.change.velocity, ka));
@@ -564,32 +560,32 @@ const collide_and_react = (
     .mesh :: &Mesh,
     .properties :: &MeshProperties,
     .delta_time :: Float32,
-) -> Option.t[CollisionResult] => (
-    if collide({ .position = entity.position^, .radius = entity.radius }, mesh) is :Some collision then (
-        let mut zero_pos = { 0, 0, 0 };
-        let mut zero_vel = { 0, 0, 0 };
-        let mut zero_acc = { 0, 0, 0 };
-        let mut zero_ang = { 0, 0, 0 };
-        let mesh_entity = {
-            .position = &mut zero_pos,
-            .velocity = &mut zero_vel,
-            .acceleration = &mut zero_acc,
-            .angular_velocity = &mut zero_ang,
-            .radius_change_speed = 0,
-            .jump_modifier = 0,
-            .radius = 0,
-            .inverse_mass = 0,
-            .soft = :None,
-        };
-        :Some do_react_entities(
-            entity,
-            mesh_entity,
-            collision,
-            .properties,
-            .friction_into_linear = 1,
-            .delta_time,
-        )
-    ) else (
-        :None
-    )
-);
+) -> std.iter.Iterable[CollisionResult] => {
+    .iter = @move consumer => (
+        for collision in collide({ .position = entity.position^, .radius = entity.radius }, mesh) do (
+            let mut zero_pos = { 0, 0, 0 };
+            let mut zero_vel = { 0, 0, 0 };
+            let mut zero_acc = { 0, 0, 0 };
+            let mut zero_ang = { 0, 0, 0 };
+            let mesh_entity = {
+                .position = &mut zero_pos,
+                .velocity = &mut zero_vel,
+                .acceleration = &mut zero_acc,
+                .angular_velocity = &mut zero_ang,
+                .radius_change_speed = 0,
+                .jump_modifier = 0,
+                .radius = 0,
+                .inverse_mass = 0,
+                .soft = :None,
+            };
+            consumer(do_react_entities(
+                entity,
+                mesh_entity,
+                collision,
+                .properties,
+                .friction_into_linear = 1,
+                .delta_time,
+            ));
+        );
+    ),
+};

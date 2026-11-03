@@ -711,22 +711,16 @@ use (
                     |> ArrayList.iter
                     |> std.iter.enumerate
             ) do (
-                if collisions.collide_and_react(
+                for collision in collisions.collide_and_react(
                     soft_collision_entity,
                     .mesh = &level_model^.collision_mesh,
                     .properties = &level_model^.properties,
                     .delta_time,
-                ) is :Some collision then (
+                ) do (
                     # TODO volume?
                     total_weight += collision.penetration;
                     &mut entity^.collisions |> ArrayList.push_back(collision);
                 );
-            );
-            @comment_out (
-                dbg.print({
-                    .collisions = &collisions_to_apply |> ArrayList.length,
-                    .total_weight,
-                });
             );
             for &collision in &entity^.collisions |> ArrayList.iter do (
                 collisions.apply(
@@ -743,12 +737,12 @@ use (
                 |> ArrayList.iter
                 |> std.iter.enumerate
         ) do (
-            if collisions.collide_and_react(
+            for collision in collisions.collide_and_react(
                 hard_collision_entity,
                 .mesh = &level_model^.collision_mesh,
                 .properties = &level_model^.properties,
                 .delta_time,
-            ) is :Some collision then (
+            ) do (
                 collisions.apply(hard_collision_entity, :None, collision, 1);
                 if type_index == 4 and score_beachball then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side } then (
@@ -1071,6 +1065,9 @@ use (
                     Model.draw(&self^.assets.models.dragon_scale, false, matrix);
                 );
                 if not self^.dead then (
+                    &mut self^.player.collisions |> ArrayList.sort_with(
+                        (a, b) => std.cmp.default_compare(&b^.penetration, &a^.penetration)
+                    );
                     with Model.PlayerCtx = {
                         .collisions = &self^.player.collisions,
                         .position = self^.player.position,

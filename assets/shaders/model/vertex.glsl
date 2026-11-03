@@ -1,4 +1,4 @@
-#define MAX_COLLISIONS 10
+#define MAX_COLLISIONS 32
 
 attribute vec3 a_pos;
 attribute vec2 a_uv;
