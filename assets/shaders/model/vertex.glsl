@@ -1,3 +1,5 @@
+#define MAX_COLLISIONS 10
+
 attribute vec3 a_pos;
 attribute vec2 a_uv;
 attribute vec3 a_normal;
@@ -13,8 +15,14 @@ uniform mat4 u_view_matrix;
 uniform mat4 u_projection_matrix;
 
 uniform float u_player_radius;
-uniform vec3 u_collision_normal;
-uniform float u_collision_penetration;
+
+struct Collision {
+    vec3 normal;
+    float penetration;
+};
+
+uniform Collision u_collisions[MAX_COLLISIONS];
+uniform int u_collisions_len;
 
 uniform float u_animated;
 uniform float u_time;
@@ -27,19 +35,27 @@ void main() {
     v_normal = (u_model_matrix * vec4(a_normal, 0.0)).xyz;
     v_camera_normal = (u_view_matrix * vec4(v_normal, 0.0)).xyz;
     vec3 pos_relative_to_entity = (u_model_matrix * vec4(a_pos, 0.0)).xyz;
-    float relative_to_surface = dot(pos_relative_to_entity, u_collision_normal) + u_player_radius;
-    if (false && relative_to_surface < u_collision_penetration) {
-        // float scale = length(pos_relative_to_entity);
-        // float sin_to_collision = length(cross(pos_relative_to_entity / scale, collision_normal));
-        pos_relative_to_entity += u_collision_normal * relative_to_surface;
-    }
     vec3 dir = normalize(pos_relative_to_entity);
-    float cos_to_normal = dot(dir, u_collision_normal);
-    if (cos_to_normal < 0.0) {
-        vec3 flat_dir = normalize(dir - u_collision_normal * cos_to_normal);
-        pos_relative_to_entity += flat_dir * u_collision_penetration * (-cos_to_normal);
-        pos_relative_to_entity -= u_collision_normal * u_collision_penetration * cos_to_normal;
+
+    float total_squish_weight = 0.0;
+    vec3 total_squish = vec3(0.0, 0.0, 0.0);
+    for (int i = 0; i < u_collisions_len; i++) {
+        Collision collision = u_collisions[i];
+        float cos_to_normal = dot(dir, collision.normal);
+        if (cos_to_normal < 0.0) {
+            vec3 flat_dir = normalize(dir - collision.normal * cos_to_normal);
+            vec3 squish =
+                flat_dir * collision.penetration * (-cos_to_normal)
+                - collision.normal * collision.penetration * cos_to_normal;
+            float squish_weight = -collision.penetration * cos_to_normal;
+            total_squish += squish * squish_weight;
+            total_squish_weight += squish_weight;
+        }
     }
+    if (total_squish_weight > 0.0) {
+        pos_relative_to_entity += total_squish / total_squish_weight;
+    }
+
     vec3 translation = (u_model_matrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
     v_world_pos = pos_relative_to_entity + translation;
     vec4 camera_pos = u_view_matrix * vec4(v_world_pos, 1.0);

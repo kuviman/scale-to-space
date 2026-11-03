@@ -49,7 +49,7 @@ use (
     );
 
     const Entity = newtype {
-        .collision :: Option.t[collisions.CollisionResult],
+        .collisions :: ArrayList.t[collisions.CollisionResult],
         .skin :: Int32,
         .position :: Vec3,
         .velocity :: Vec3,
@@ -550,10 +550,16 @@ use (
         entity.shell.radius = 3;
         entity.shell.max_radius = entity.shell.radius;
         entity.mass = 0.1;
+        let old = entity;
+        entity.collisions = ArrayList.new();
+        let current = entity;
+        entity.collisions = ArrayList.new();
+        let new = entity;
+        entity.collisions = ArrayList.new();
         {
-            .old = entity,
-            .current = entity,
-            .new = entity,
+            .old,
+            .current,
+            .new,
             .scoring = :WaitingToCrossTheNet { .serving_side = 0 },
             .lerp = 1,
         }
@@ -562,7 +568,7 @@ use (
     const reset_player = (.skin, .power) -> Entity => (
         let ref config = (@current Assets.Ctx)^.config;
         {
-            .collision = :None,
+            .collisions = ArrayList.new(),
             .input = {
                 .wasd = { 0, 0 },
                 .space = false,
@@ -698,8 +704,7 @@ use (
         );
         (
             let soft_collision_entity = collision_entity(entity, .soft = true);
-            entity^.collision = :None;
-            let mut collisions_to_apply = ArrayList.new();
+            entity^.collisions = ArrayList.new();
             let mut total_weight = 0;
             for { type_index, level_model } in (
                 &self^.assets.models.level
@@ -714,8 +719,7 @@ use (
                 ) is :Some collision then (
                     # TODO volume?
                     total_weight += collision.penetration;
-                    &mut collisions_to_apply |> ArrayList.push_back(collision);
-                    entity^.collision = :Some collision;
+                    &mut entity^.collisions |> ArrayList.push_back(collision);
                 );
             );
             @comment_out (
@@ -724,8 +728,13 @@ use (
                     .total_weight,
                 });
             );
-            for collision in collisions_to_apply |> ArrayList.into_iter do (
-                collisions.apply(soft_collision_entity, :None, collision, collision.penetration / total_weight);
+            for &collision in &entity^.collisions |> ArrayList.iter do (
+                collisions.apply(
+                    soft_collision_entity,
+                    :None,
+                    collision,
+                    collision.penetration / total_weight,
+                );
             );
         );
         let hard_collision_entity = collision_entity(entity, .soft = false);
@@ -885,7 +894,9 @@ use (
                         |> Option.unwrap;
                     OtherPlayer.update_net(player, data);
                 )
-                | :UpdateBeachball data => (
+                | :UpdateBeachball data => with_return (
+                    # TODO ownership
+                    return;
                     self^.beachball = {
                         .old = self^.beachball.current,
                         .current = self^.beachball.current,
@@ -1028,8 +1039,9 @@ use (
                 self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
                 with Assets.Ctx = &mut self^.assets;
                 with Model.Renderer.Ctx = &self^.model_renderer;
+                let no_collisions = ArrayList.new();
                 with Model.PlayerCtx = {
-                    .collision = :None,
+                    .collisions = &no_collisions,
                     .position = self^.player.position,
                     .radius = if self^.dead then 0 else self^.player.shell.radius,
                     .volleyball_position = self^.beachball.current.position,
@@ -1060,7 +1072,7 @@ use (
                 );
                 if not self^.dead then (
                     with Model.PlayerCtx = {
-                        .collision = self^.player.collision,
+                        .collisions = &self^.player.collisions,
                         .position = self^.player.position,
                         .radius = 0,
                         .volleyball_position = self^.beachball.current.position,
@@ -1684,13 +1696,21 @@ use (
                                 1,
                             );
                         );
-                        self^.beachball = {
-                            .old = self^.beachball.current,
-                            .current = self^.beachball.current,
-                            .new = self^.beachball.current,
-                            .scoring = self^.beachball.scoring,
-                            .lerp = 1,
-                        };
+                        self^.beachball = (
+                            let old = self^.beachball.current;
+                            self^.beachball.current.collisions = ArrayList.new();
+                            let current = self^.beachball.current;
+                            self^.beachball.current.collisions = ArrayList.new();
+                            let new = self^.beachball.current;
+                            self^.beachball.current.collisions = ArrayList.new();
+                            {
+                                .old,
+                                .current,
+                                .new,
+                                .scoring = self^.beachball.scoring,
+                                .lerp = 1,
+                            }
+                        );
                         let volume = min(abs(result.velocity_along_normal) / player_speed * 4, 1);
                         if volume > 0.1 then (
                             geng.audio.play_with(

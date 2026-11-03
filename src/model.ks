@@ -12,7 +12,7 @@ const Model = (
     };
 
     const PlayerCtx = @context newtype {
-        .collision :: Option.t[collisions.CollisionResult],
+        .collisions :: &ArrayList.t[collisions.CollisionResult],
         .position :: Vec3,
         .radius :: Float32,
         .volleyball_position :: Vec3,
@@ -98,31 +98,27 @@ const Model = (
                 &model^.texture,
                 draw_state
             );
-        let {
-            collision_normal,
-            collision_penetration,
-        } :: { _, _ } = match (@current PlayerCtx).collision with (
-            | :Some collision => {
-                collision.normal,
-                collision.penetration,
-            }
-            | :None => {
-                { 0, 0, 0 },
-                0,
-            }
+        let collisions = (@current PlayerCtx).collisions;
+        program
+            |> ugli.set_uniform(
+                "u_collisions_len",
+                collisions |> ArrayList.length,
+                draw_state
+            );
+        for { i, collision } in collisions |> ArrayList.iter |> std.iter.enumerate do (
+            program
+                |> ugli.set_uniform(
+                    &format!("u_collisions[\(i)].normal") |> as_str,
+                    collision^.normal,
+                    draw_state
+                );
+            program
+                |> ugli.set_uniform(
+                    &format!("u_collisions[\(i)].penetration") |> as_str,
+                    collision^.penetration,
+                    draw_state
+                );
         );
-        program
-            |> ugli.set_uniform(
-                "u_collision_normal",
-                collision_normal,
-                draw_state
-            );
-        program
-            |> ugli.set_uniform(
-                "u_collision_penetration",
-                collision_penetration,
-                draw_state
-            );
         program
             |> ugli.set_uniform(
                 "u_player_pos",
