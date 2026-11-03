@@ -248,6 +248,14 @@ const Assets = (
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/mushroom"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rocket"));
                 &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/net"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/brick"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/paint"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/road"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/wood_01"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/wood_02"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rock_02"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rock_03"));
+                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/sail"));
                 list
             ),
             .level_nocollisions = (
