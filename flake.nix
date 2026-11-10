@@ -9,15 +9,18 @@
     # geng.url = "git+file:///home/kuviman/projects/kast-lang/geng?submodules=1";
     flake-utils.url = "github:numtide/flake-utils";
     nix-filter.url = "github:numtide/nix-filter";
+    tcc-overlay.url = "github:vesdev/tcc-overlay/7d80aa0898c8c78536fb13881b29abd751644d30";
+    tcc-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs:
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
+        overlays = [ inputs.tcc-overlay.overlays.default ];
         SERVER_ADDRESS = "15.204.212.176:5555";
         nix-filter = inputs.nix-filter.lib;
         pkgs-25-11 = import inputs.nixpkgs-25-11 { inherit system; };
-        pkgs = import inputs.nixpkgs { inherit system; };
+        pkgs = import inputs.nixpkgs { inherit system overlays; };
         geng = inputs.geng.packages.${system}.geng;
         emscripten = pkgs-25-11.emscripten;
         sdl3-win = with pkgs.pkgsCross.mingwW64;
@@ -147,7 +150,6 @@
                 just
                 caddy
                 inotify-tools
-                tinycc
                 valgrind
                 emscripten
                 butler

@@ -86,6 +86,24 @@
         "type": "github"
       }
     },
+    "flake-parts_4": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_4"
+      },
+      "locked": {
+        "lastModified": 1790898470,
+        "narHash": "sha256-zTwuwezD0w3hpga6a6P8emidzAZFyWqlNeRBlpWOOl8=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "024633cd702b10285db5cb19b40ad48d2399ba60",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -221,11 +239,11 @@
         "nixpkgs-25-11": "nixpkgs-25-11"
       },
       "locked": {
-        "lastModified": 1793704826,
-        "narHash": "sha256-/MCL9CnOfm34vxIhtwEN8uBe8jb3y2Z/TC7rPnSUKpE=",
+        "lastModified": 1794297885,
+        "narHash": "sha256-17Fo1OM8c/9QAFWSmHbWOVDSjtihAhNqxZQuNxIKl8c=",
         "ref": "refs/heads/main",
-        "rev": "db08f48bb624b054f068ec836a85cfab7fe285ef",
-        "revCount": 22,
+        "rev": "94e94cfcff20c2c0e3a39eb94af5818b78beeb94",
+        "revCount": 26,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/kast-lang/geng"
@@ -246,11 +264,11 @@
         "tcc-overlay": "tcc-overlay"
       },
       "locked": {
-        "lastModified": 1793704267,
-        "narHash": "sha256-gpvHnaEE2GcUYhpBM3dOzmY4i+bqQi2rONsYt+H6Y3w=",
+        "lastModified": 1794297643,
+        "narHash": "sha256-JHJrgyF+quyKMtbJBryz/dVRQE+840ncSuQ0uNnV3pI=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "364e0e03500693229e83cdb37ae3befd672807e4",
+        "rev": "0838b1d7b40cb63e1a7875005a540cd41d671d24",
         "type": "github"
       },
       "original": {
@@ -270,11 +288,11 @@
         "tcc-overlay": "tcc-overlay_2"
       },
       "locked": {
-        "lastModified": 1793427215,
-        "narHash": "sha256-tCHaQRlgIOYGyv43vtQjX+taFiIqSjRSlsgXWI9Ll9k=",
+        "lastModified": 1794209870,
+        "narHash": "sha256-LSDiV/IodDX9OAwNhXIoK5GvL0Qc1qN8HXbfaXGOixk=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "188b9a1678fef7d68da256a76293858038407fb4",
+        "rev": "fc9d3218273ea9243ff7fb8384fd4ebc64187db5",
         "type": "github"
       },
       "original": {
@@ -293,11 +311,11 @@
         "tcc-overlay": "tcc-overlay_3"
       },
       "locked": {
-        "lastModified": 1793511751,
-        "narHash": "sha256-BNrmgYI78irXUUqdZv/CzPrbC4EKlLeBeioAzUg7/dA=",
+        "lastModified": 1794298618,
+        "narHash": "sha256-AMZuxZ3QFbByDQ527Jx+VQRjtTcfHK7Xn43Sqoqx6ts=",
         "ref": "self-host",
-        "rev": "1737602b15fb30aaa3a5e9d1bd8e352f4fc6a0e9",
-        "revCount": 329,
+        "rev": "7e07a5219194902a880d848c0179cc2af80d7dcc",
+        "revCount": 337,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/kast-lang/kast"
@@ -495,6 +513,21 @@
       }
     },
     "nixpkgs-lib_3": {
+      "locked": {
+        "lastModified": 1790477367,
+        "narHash": "sha256-oujbxmVKDhci2E4EM3KyAbRUgp5/IsCoiA/LfEF7OOk=",
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "rev": "f7cd230690d9fc982d06129f9189b101fddcfa3b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib_4": {
       "locked": {
         "lastModified": 1790477367,
         "narHash": "sha256-oujbxmVKDhci2E4EM3KyAbRUgp5/IsCoiA/LfEF7OOk=",
@@ -756,7 +789,8 @@
         "kast-lsp": "kast-lsp",
         "nix-filter": "nix-filter_5",
         "nixpkgs": "nixpkgs_5",
-        "nixpkgs-25-11": "nixpkgs-25-11_2"
+        "nixpkgs-25-11": "nixpkgs-25-11_2",
+        "tcc-overlay": "tcc-overlay_4"
       }
     },
     "systems": {
@@ -959,6 +993,28 @@
       "original": {
         "owner": "vesdev",
         "repo": "tcc-overlay",
+        "type": "github"
+      }
+    },
+    "tcc-overlay_4": {
+      "inputs": {
+        "flake-parts": "flake-parts_4",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793169262,
+        "narHash": "sha256-voBprqB76dFCkfPL3yJK2kLd+9t/7ZkJIaP8AXo8PmA=",
+        "owner": "vesdev",
+        "repo": "tcc-overlay",
+        "rev": "7d80aa0898c8c78536fb13881b29abd751644d30",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vesdev",
+        "repo": "tcc-overlay",
+        "rev": "7d80aa0898c8c78536fb13881b29abd751644d30",
         "type": "github"
       }
     }

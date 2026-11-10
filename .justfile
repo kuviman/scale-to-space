@@ -25,8 +25,8 @@ build-win:
 run-win *args:
     just build-win && cd result/bin && wine ScaleToSpace.exe {{args}}
 
-build:
-    geng transpile-to-c
+build source="src/main.ks":
+    geng transpile-to-c {{source}}
     geng build-tcc
 
 run *args:

@@ -7,6 +7,28 @@ module:
 
 use json_lib.*;
 
+# TODO hacks here
+const Map = newtype {
+    .actual_map :: OrdMap.t[String, Int32],
+};
+
+const parse_map = (map :: Ast) -> Ast => (
+    let key = `(key);
+    let value = `(value);
+    `(
+        let mut map :: Map = { .actual_map = OrdMap.new() };
+        let values = match $map with (
+            | :Object pairs => pairs
+            | _ => error("expected map")
+        );
+        for { $key, $value } in values |> ArrayList.into_iter do (
+            let value = $(parse_value(value, Int32));
+            &mut map.actual_map |> OrdMap.add($key, value);
+        );
+        map
+    )
+);
+
 const ErrorHandler = @context (type (&str -> Never));
 
 const error = [T] (s :: &str) -> T => (
@@ -145,12 +167,23 @@ const find_field = (pairs :: &ArrayList.t[Pair], name :: &str) -> Value => with_
             return value^;
         );
     );
+    return :Null;
+    # TODO
     for &{ ref key, ref value } in pairs |> ArrayList.iter do (
         println!("existing key: \(key |> as_str)");
     );
     error_fmt!("Expected field: \(name)")
 );
 
+const parse_option = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
+    | target.name == "interpreter" => `(
+        match $value with (
+            | :Null => :None
+            | _ => :Some $(parse_value(value, T))
+        ) :: Option.t[T]
+    )
+    | true => panic("comptime only")
+);
 const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
     | target.name == "interpreter" => (
         let result = match std.reflection.type_info(T) with (
@@ -174,10 +207,32 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                         | :Ok n => n
                         | :Error s => error_fmt!("Expected int: \(s)")
                     )
-                    | _ => error("Expected a float32")
+                    | _ => error("Expected a int32")
                 )
             )
-            | :Tuple { .unnamed, .named } => (
+            | :UInt32 => `(
+                match $value with (
+                    | :Number n => match &n |> Number.try_u32 with (
+                        | :Ok n => Int32_to_UInt32(n)
+                        | :Error s => error_fmt!("Expected int: \(s)")
+                    )
+                    | _ => error("Expected a uint32")
+                )
+            )
+            | :String => `(
+                match $value with (
+                    | :String s => s
+                    | _ => error("Expected a string")
+                )
+            )
+            | :Tuple { .unnamed, .named } => with_return (
+                (
+                    for &{ ref name, _ } in std.collections.SList.iter(&named) do (
+                        if name |> as_str == "actual_map" then (
+                            return parse_map(value);
+                        );
+                    );
+                );
                 let field_pairs = `(field_pairs);
                 let mut fields = `();
                 let mut first_field = true;
@@ -210,7 +265,8 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     add_field(`(.$name_ident = $field));
                 );
                 `(
-                    ( # TODO extra scope because $field_pairs is shadowing but same symbol
+                    (
+                        # TODO extra scope because $field_pairs is shadowing but same symbol
                         let $field_pairs = match $value with (
                             | :Object fields => fields
                             | _ => error("Expected an obj")
@@ -219,7 +275,64 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                     )
                 )
             )
-            | :Variant { .variants } => (
+            | :Array { .element_ty, .length } => (
+                let a = `(a);
+                let mut elements = `();
+                for i in 0..length do (
+                    let element = parse_value(`($a.[i]), element_ty);
+                    if i == 0 then (
+                        elements = element;
+                    ) else (
+                        elements = `($elements, $element);
+                    );
+                );
+                `(
+                    let $a = match $value with (
+                        | :Array a => a
+                        | _ => error("Expected an array")
+                    );
+                    if &$a |> ArrayList.length != length then (
+                        error("wrong array length");
+                    );
+                    @array {$elements}
+                )
+            )
+            | :ArrayList element_ty => (
+                let element = `(element);
+                `(
+                    let a = match $value with (
+                        | :Array a => a
+                        | _ => error("Expected an array")
+                    );
+                    let mut result = ArrayList.new();
+                    for $element in a |> ArrayList.into_iter do (
+                        let element = $(parse_value(element, element_ty));
+                        &mut result |> ArrayList.push_back(element);
+                    );
+                    result
+                )
+            )
+            | :Variant { .variants } => with_return (
+                (
+                    # Option
+                    let mut none = false;
+                    let mut some = :None;
+                    for &{ .name = ref name, .data } in std.collections.SList.iter(&variants) do (
+                        if name |> as_str == "None" then (
+                            none = true;
+                        );
+                        if name |> as_str == "Some" then (
+                            if data is :Some data then (
+                                some = :Some data;
+                            );
+                        );
+                    );
+                    if none then (
+                        if some is :Some T then (
+                            return parse_option(value, T);
+                        );
+                    );
+                );
                 let mut variants = variants;
                 let field_pairs = `(field_pairs);
                 let tag = `(tag);
@@ -271,12 +384,16 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
     | true => panic("comptime only")
 );
 
+const parse_str = (s :: Ast, T :: Type) -> Ast => `(
+    let value = parse(&mut Reader.create($s))
+        |> Result.unwrap;
+    include_ast parse_value(`(value), T)
+);
+
 const loader = (T :: Type) -> Ast => `(
     (path :: &str) -> T => (
         with ErrorHandler = (msg => panic(msg));
         let source = std.fs.read_file(path);
-        let value = parse(&mut Reader.create(&source |> as_str))
-            |> Result.unwrap;
-        include_ast parse_value(`(value), T)
+        include_ast parse_str(`(&source |> as_str), T)
     )
 );
