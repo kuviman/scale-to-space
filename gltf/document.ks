@@ -5,6 +5,7 @@ const types = (
     module:
 
     const Index = Int32;
+    const GLint = Int32;
     const GLenum = UInt32;
 
     const Node = newtype {
@@ -31,7 +32,7 @@ const types = (
 
     const Scene = newtype {
         .name :: String,
-        .nodes :: ArrayList.t[Index],
+        .nodes :: Option.t[ArrayList.t[Index]],
     };
 
     const Buffer = newtype {
@@ -79,10 +80,10 @@ const types = (
     };
 
     const Sampler = newtype {
-        .magFilter :: Option.t[GLenum],
-        .minFilter :: Option.t[GLenum],
-        .wrapS :: Option.t[GLenum],
-        .wrapT :: Option.t[GLenum],
+        .magFilter :: Option.t[GLint],
+        .minFilter :: Option.t[GLint],
+        .wrapS :: Option.t[GLint],
+        .wrapT :: Option.t[GLint],
         .name :: Option.t[String],
     };
 

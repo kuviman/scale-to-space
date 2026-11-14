@@ -156,6 +156,7 @@
                 python314Packages.websockify
                 xhost
                 clang-tools
+                renderdoc
               ];
               inherit SERVER_ADDRESS;
             };

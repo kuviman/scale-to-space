@@ -3,6 +3,7 @@ use (import "./assets.ks").*;
 use (import "./model.ks").*;
 
 const json = import "./json.ks";
+const gltf = import "../gltf/_lib.ks";
 const badcop = import "../net/bindings.ks";
 const collisions = import "./collisions.ks";
 
@@ -476,6 +477,7 @@ use (
         .fps_counter :: FpsCounter,
         .camera :: geng.Camera,
         .assets :: Assets.t,
+        .gltf_renderer :: gltf.Renderer,
         .model_renderer :: Model.Renderer,
         .water :: Model.t,
         .player :: Entity,
@@ -921,6 +923,8 @@ use (
         impl Game as geng.App = {
             .init = () => (
                 SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);
+                let gltf_renderer = gltf.Renderer.init();
+                with gltf.Renderer.Ctx = &gltf_renderer;
                 @native "glEnable(GL_BLEND)";
                 @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
                 @native "glCullFace(GL_BACK)";
@@ -963,6 +967,7 @@ use (
                     .dead = false,
                     .dead_timer = 0,
                     .water,
+                    .gltf_renderer,
                     .model_renderer = Model.Renderer.init(),
                     .player = reset_player(
                         .skin = 0,
@@ -1032,6 +1037,7 @@ use (
             .draw = self => with_return (
                 self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
                 with Assets.Ctx = &mut self^.assets;
+                with gltf.Renderer.Ctx = &self^.gltf_renderer;
                 with Model.Renderer.Ctx = &self^.model_renderer;
                 let no_collisions = ArrayList.new();
                 with Model.PlayerCtx = {
@@ -1046,12 +1052,16 @@ use (
                     .framebuffer_size = geng.get_window_size(),
                 );
                 ugli.clear({ 0.8, 0.8, 1, 1 });
-                for level_model in &self^.assets.models.level |> ArrayList.iter do (
-                    Model.draw(&level_model^.model, level_model^.properties.animated, Mat4.IDENTITY);
+                (
+                    let matrix = Mat4.rotate_z(Angle.from_degrees(-90))
+                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)));
+                    for node in &self^.assets.level.scene^.nodes |> ArrayList.iter do (
+                        &node^^ |> gltf.Node.draw(false, matrix);
+                    );
                 );
                 @native "glEnable(GL_CULL_FACE)";
                 for model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
-                    Model.draw(model, false, Mat4.IDENTITY);
+                    # TODO Model.draw(model, false, Mat4.IDENTITY);
                 );
                 # @native "glDisable(GL_CULL_FACE)";
                 let mut collected_scales :: Int32 = 0;

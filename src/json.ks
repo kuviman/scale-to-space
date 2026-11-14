@@ -249,18 +249,26 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                         |> std.iter.enumerate
                 ) do (
                     let field_ident = `(field);
-                    let field = `(
+                    let field = `((
+                        let parent_error_handler = @current ErrorHandler;
+                        with ErrorHandler = (s => (
+                            parent_error_handler(&format!("While parsing field .\(i): \(s)") |> as_str)
+                        ));
                         let $field_ident = find_field(&$field_pairs, to_string(i));
                         $(parse_value(field_ident, FieldT))
-                    );
+                    ));
                     add_field(field);
                 );
                 for { name, FieldT } in std.collections.SList.into_iter(named) do (
                     let field_ident = `(field);
-                    let field = `(
+                    let field = `((
+                        let parent_error_handler = @current ErrorHandler;
+                        with ErrorHandler = (s => (
+                            parent_error_handler(&format!("While parsing field .\(name): \(s)") |> as_str)
+                        ));
                         let $field_ident = find_field(&$field_pairs, &name |> as_str);
                         $(parse_value(field_ident, FieldT))
-                    );
+                    ));
                     let name_ident = std.Ast.ident(name);
                     add_field(`(.$name_ident = $field));
                 );
@@ -385,6 +393,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
 );
 
 const parse_str = (s :: Ast, T :: Type) -> Ast => `(
+    with ErrorHandler = (msg => panic(msg));
     let value = parse(&mut Reader.create($s))
         |> Result.unwrap;
     include_ast parse_value(`(value), T)
@@ -392,7 +401,6 @@ const parse_str = (s :: Ast, T :: Type) -> Ast => `(
 
 const loader = (T :: Type) -> Ast => `(
     (path :: &str) -> T => (
-        with ErrorHandler = (msg => panic(msg));
         let source = std.fs.read_file(path);
         include_ast parse_str(`(&source |> as_str), T)
     )

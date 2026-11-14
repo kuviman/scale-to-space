@@ -4,7 +4,8 @@ varying vec3 v_camera_normal;
 varying vec3 v_world_pos;
 varying vec3 v_camera_pos;
 
-uniform sampler2D u_texture;
+uniform vec4 u_base_color_factor;
+uniform sampler2D u_base_color_texture;
 
 uniform vec3 u_player_pos;
 uniform float u_player_radius;
@@ -17,8 +18,6 @@ vec4 lerp(vec4 a, vec4 b, float t) {
 }
 
 void main() {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    return;
     vec3 light_dir = normalize(vec3(2.0, 6.0, 7.0));
     float light_k = max(dot(light_dir, normalize(v_normal)), 0.0);
     float ambient_light = 0.8;
@@ -43,7 +42,7 @@ void main() {
         }
     }
     vec4 light_color = vec4(vec3(light_k), 1.0);
-    gl_FragColor = texture2D(u_texture, v_uv) * light_color;
+    gl_FragColor = texture2D(u_base_color_texture, v_uv) * u_base_color_factor * light_color;
     gl_FragColor = lerp(gl_FragColor, vec4(1.0), hightlight);
     if (true) {
         // fog

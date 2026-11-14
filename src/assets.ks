@@ -3,6 +3,7 @@ use (import "./model.ks").*;
 const config = import "./config.ks";
 const collisions = import "./collisions.ks";
 const json = import "./json.ks";
+const gltf = import "../gltf/_lib.ks";
 
 module:
 
@@ -21,6 +22,7 @@ const Assets = (
         .powers :: Powers,
         .volleyball :: Model.t,
         .config :: config.Config,
+        .level :: gltf.Asset,
     };
 
     const Powers = newtype {
@@ -103,9 +105,7 @@ const Assets = (
                 let source = std.fs.read_file(
                     &format!("\(path)/properties.json") |> as_str
                 );
-                let value = json.parse(&mut json.Reader.create(&source |> as_str))
-                    |> Result.unwrap;
-                include_ast json.parse_value(`(value), collisions.MeshProperties)
+                include_ast json.parse_str(`(&source |> as_str), collisions.MeshProperties)
             );
             let sfx = geng.audio.Buffer.load(
                 &format!("\(path)/sfx.wav") |> as_str
@@ -141,6 +141,7 @@ const Assets = (
 
     const load = () -> t => (
         let config = load_config();
+        let level = gltf.Asset.load("assets/level.glb");
         let music = geng.audio.Buffer.load("assets/music.wav");
         let music = geng.audio.play_with(
             &music,
@@ -284,6 +285,7 @@ const Assets = (
         };
 
         {
+            .level,
             .music,
             .music_high,
             .sfx,
