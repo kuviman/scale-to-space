@@ -314,11 +314,17 @@ const Load = (
         if sampler^.magFilter is :Some filter then (
             gl.tex_parameter_i(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
         );
-        if sampler^.wrapS is :Some wrap then (
-            gl.tex_parameter_i(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+        gl.tex_parameter_i(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_WRAP_S,
+            sampler^.wrapS
+                |> Option.unwrap_or(UInt32_to_Int32(gl.REPEAT)),
         );
-        if sampler^.wrapT is :Some wrap then (
-            gl.tex_parameter_i(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+        gl.tex_parameter_i(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_WRAP_T,
+            sampler^.wrapT
+                |> Option.unwrap_or(UInt32_to_Int32(gl.REPEAT)),
         );
         let is_pot = (mut x :: Int32) => with_return (
             while x % 2 == 0 do (
