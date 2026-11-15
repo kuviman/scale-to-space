@@ -8,21 +8,21 @@ module:
 use json_lib.*;
 
 # TODO hacks here
-const Map = newtype {
-    .actual_map :: OrdMap.t[String, Int32],
+const Map = [T] newtype {
+    .actual_map :: OrdMap.t[String, T],
 };
 
-const parse_map = (map :: Ast) -> Ast => (
+const parse_map = (map :: Ast, key_T) -> Ast => (
     let key = `(key);
     let value = `(value);
     `(
-        let mut map :: Map = { .actual_map = OrdMap.new() };
+        let mut map :: Map[_] = { .actual_map = OrdMap.new() };
         let values = match $map with (
             | :Object pairs => pairs
             | _ => error("expected map")
         );
         for { $key, $value } in values |> ArrayList.into_iter do (
-            let value = $(parse_value(value, Int32));
+            let value = $(parse_value(value, key_T));
             &mut map.actual_map |> OrdMap.add($key, value);
         );
         map
@@ -229,7 +229,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
                 (
                     for &{ ref name, _ } in std.collections.SList.iter(&named) do (
                         if name |> as_str == "actual_map" then (
-                            return parse_map(value);
+                            return parse_map(value, Int32);
                         );
                     );
                 );

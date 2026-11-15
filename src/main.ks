@@ -708,15 +708,14 @@ use (
             let soft_collision_entity = collision_entity(entity, .soft = true);
             entity^.collisions = ArrayList.new();
             let mut total_weight = 0;
-            for { type_index, level_model } in (
-                &self^.assets.models.level
+            for level_part in (
+                &self^.assets.level.parts
                     |> ArrayList.iter
-                    |> std.iter.enumerate
             ) do (
                 for collision in collisions.collide_and_react(
                     soft_collision_entity,
-                    .mesh = &level_model^.collision_mesh,
-                    .properties = &level_model^.properties,
+                    .mesh = &level_part^.collision_mesh,
+                    .properties = &level_part^.material^.properties,
                     .delta_time,
                 ) do (
                     # TODO volume?
@@ -734,19 +733,18 @@ use (
             );
         );
         let hard_collision_entity = collision_entity(entity, .soft = false);
-        for { type_index, level_model } in (
-            &self^.assets.models.level
+        for level_part in (
+            &self^.assets.level.parts
                 |> ArrayList.iter
-                |> std.iter.enumerate
         ) do (
             for collision in collisions.collide_and_react(
                 hard_collision_entity,
-                .mesh = &level_model^.collision_mesh,
-                .properties = &level_model^.properties,
+                .mesh = &level_part^.collision_mesh,
+                .properties = &level_part^.material^.properties,
                 .delta_time,
             ) do (
                 collisions.apply(hard_collision_entity, :None, collision, 1);
-                if type_index == 4 and score_beachball then (
+                if level_part^.material^.name == "sand" and score_beachball then (
                     if self^.beachball.scoring is :CanScore { .last_touched_side } then (
                         self^.beachball.scoring = :WaitingToCrossTheNet { .serving_side = 0 };
                         let side = beachball_side(entity^.position);
@@ -754,7 +752,7 @@ use (
                         badcop.send_beachball_scored(who_scored);
                     );
                 );
-                if type_index == 1 and entity^.is_player then (
+                if level_part^.material^.name == "lava" and entity^.is_player then (
                     self^.dead = true;
                     for (_ :: Int32) in 0..10 do (
                         const rng = () => std.random.gen_range(.min = -0.5, .max = 0.5);
@@ -771,11 +769,11 @@ use (
                 );
                 let volume = min(abs(collision.velocity_along_normal) / 50, 1);
                 if volume > 0.1 then (
-                    for _ in 0..level_model^.properties.particles do (
+                    for _ in 0..level_part^.material^.properties.particles do (
                         const rng = () => std.random.gen_range(.min = -0.5, .max = 0.5);
                         let p = Vec3.add(
                             collision.point,
-                            Vec3.mul({ rng(), rng(), rng() }, level_model^.properties.particle_spread),
+                            Vec3.mul({ rng(), rng(), rng() }, level_part^.material^.properties.particle_spread),
                         );
                         let particle = {
                             .position = Vec3.sub(
@@ -788,13 +786,13 @@ use (
                                     ),
                                 ),
                             ),
-                            .t = level_model^.properties.particle_t,
-                            .texture = level_model^.particle,
+                            .t = level_part^.material^.properties.particle_t,
+                            .texture = level_part^.material^.particle,
                         };
                         &mut self^.particles |> ArrayList.push_back(particle);
                     );
                     geng.audio.play_with(
-                        &level_model^.sfx,
+                        &level_part^.material^.sfx,
                         { .volume, .@"loop" = false },
                     );
                 );
@@ -1053,17 +1051,11 @@ use (
                 );
                 ugli.clear({ 0.8, 0.8, 1, 1 });
                 (
-                    let matrix = Mat4.rotate_z(Angle.from_degrees(-90))
-                        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)));
-                    for node in &self^.assets.level.scene^.nodes |> ArrayList.iter do (
+                    let matrix = gltf_to_geng_matrix();
+                    for node in &self^.assets.level.gltf.scene^.nodes |> ArrayList.iter do (
                         &node^^ |> gltf.Node.draw(false, matrix);
                     );
                 );
-                @native "glEnable(GL_CULL_FACE)";
-                for model in &self^.assets.models.level_nocollisions |> ArrayList.iter do (
-                    # TODO Model.draw(model, false, Mat4.IDENTITY);
-                );
-                # @native "glDisable(GL_CULL_FACE)";
                 let mut collected_scales :: Int32 = 0;
                 for scale in &self^.dragon_scales |> ArrayList.iter do (
                     if scale^.collected then (
@@ -1091,7 +1083,7 @@ use (
                     OtherPlayer.draw(other_player);
                 );
                 Entity.draw(&self^.beachball.current, .jetpack = false);
-                Model.draw(&self^.water, true, Mat4.IDENTITY);
+                # Model.draw(&self^.water, true, Mat4.IDENTITY);
                 for p in &self^.particles |> ArrayList.iter do (
                     draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
                 );

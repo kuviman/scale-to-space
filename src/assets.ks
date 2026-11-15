@@ -4,6 +4,7 @@ const config = import "./config.ks";
 const collisions = import "./collisions.ks";
 const json = import "./json.ks";
 const gltf = import "../gltf/_lib.ks";
+use std.rc.Rc;
 
 module:
 
@@ -22,7 +23,7 @@ const Assets = (
         .powers :: Powers,
         .volleyball :: Model.t,
         .config :: config.Config,
-        .level :: gltf.Asset,
+        .level :: Level,
     };
 
     const Powers = newtype {
@@ -65,65 +66,157 @@ const Assets = (
         .sparkle :: ugli.Texture,
     };
 
-    const LevelModel = newtype {
+    const Level = newtype {
+        .gltf :: gltf.Asset,
+        .parts :: ArrayList.t[LevelPart],
+    };
+
+    const LevelPart = newtype {
         .collision_mesh :: collisions.Mesh,
-        .model :: Model.t,
+        .material :: Rc.t[LevelMaterial],
+    };
+
+    const LevelMaterial = newtype {
+        .name :: &str,
         .sfx :: geng.audio.Buffer,
         .properties :: collisions.MeshProperties,
         .particle :: ugli.Texture,
     };
 
-    impl LevelModel as module = (
+    impl Level as module = (
         module:
 
-        const load = (path :: &str) -> LevelModel => (
-            let mut collision_mesh = ArrayList.new();
-            let obj = obj.parse(
-                &std.fs.read_file(
-                    &format!("\(path)/model.obj") |> as_str
-                ) |> as_str
+        const load = () -> Level => (
+            let gltf_asset = gltf.Asset.load("assets/level/model.glb");
+            let materials_config :: OrdMap.t[String, Option.t[String]] = (
+                with json.ErrorHandler = (msg => panic(msg));
+                let source = std.fs.read_file("assets/level/materials.json");
+                let value = json.parse(&mut json.Reader.create(&source |> as_str))
+                    |> Result.unwrap;
+                (include_ast json.parse_map(`(value), Option.t[String])).actual_map
             );
-            for face in obj |> ArrayList.into_iter do (
-                let mesh_face = {
-                    .vs = { face.0.a_pos, face.1.a_pos, face.2.a_pos },
-                    .normal = Vec3.normalize(
-                        Vec3.cross(
-                            Vec3.sub(face.1.a_pos, face.0.a_pos),
-                            Vec3.sub(face.2.a_pos, face.0.a_pos),
-                        )
-                    ),
+            const Impl = (
+                module:
+
+                const Ctx = @context newtype {
+                    .materials_config :: &OrdMap.t[String, Option.t[String]],
+                    .part_by_material :: &mut OrdMap.t[&str, LevelPart],
+                    .loaded_materials :: &mut OrdMap.t[&str, Rc.t[LevelMaterial]],
+                    .matrix :: Mat4,
                 };
-                &mut collision_mesh |> ArrayList.push_back(mesh_face);
-            );
-            let collision_mesh = collisions.Mesh.new(collision_mesh);
-            let model = Model.load(path);
-            let particle = geng.load_texture(
-                &format!("\(path)/particle.png") |> as_str,
-                :Nearest,
-            );
-            let properties = (
-                let source = std.fs.read_file(
-                    &format!("\(path)/properties.json") |> as_str
+
+                const load_material = (name :: &str) -> Rc.t[LevelMaterial] => (
+                    let path = format!("assets/level/materials/\(name)");
+                    ((@current Ctx).loaded_materials |> OrdMap.get_or_init(name, () => Rc.new({
+                        .particle = geng.load_texture(
+                            &format!("\(path)/particle.png") |> as_str,
+                            :Nearest,
+                        ),
+                        .properties = (
+                            let source = std.fs.read_file(
+                                &format!("\(path)/properties.json") |> as_str
+                            );
+                            include_ast json.parse_str(`(&source |> as_str), collisions.MeshProperties)
+                        ),
+                        .sfx = geng.audio.Buffer.load(
+                            &format!("\(path)/sfx.wav") |> as_str
+                        ),
+                        .name,
+                    })))^
                 );
-                include_ast json.parse_str(`(&source |> as_str), collisions.MeshProperties)
+
+                const init_part = (material_name :: &str) -> LevelPart => {
+                    .collision_mesh = collisions.Mesh.new(),
+                    .material = load_material(material_name),
+                };
+
+                const walk_primitive = (primitive :: &gltf.MeshPrimitive) => with_return (
+                    let material :: &gltf.Material = &primitive^.material^;
+                    let material_name = match material^.name with (
+                        | :None => return
+                        | :Some ref name => (
+                            match (@current Ctx).materials_config |> OrdMap.get(name) with (
+                                | :None => panic_fmt!("setup material \(name^) in materials.json")
+                                | :Some &(:None) => return
+                                | :Some &(:Some ref name) => name |> as_str
+                            )
+                        )
+                    );
+                    let part = (@current Ctx).part_by_material
+                        |> OrdMap.get_or_init(
+                            material_name,
+                            () => init_part(material_name),
+                        );
+                    let transform = (pos :: Vec3) -> Vec3 => (
+                        Mat4.mul_vec((@current Ctx).matrix, { ...pos, 1 })
+                            |> Vec4.xyz
+                    );
+                    for face in gltf.MeshPrimitive.faces(primitive) do (
+                        let vs = {
+                            transform(face.vertices.0.position),
+                            transform(face.vertices.1.position),
+                            transform(face.vertices.2.position),
+                        };
+                        let face = {
+                            .vs,
+                            .normal = Vec3.normalize(
+                                Vec3.cross(
+                                    Vec3.sub(vs.1, vs.0),
+                                    Vec3.sub(vs.2, vs.0),
+                                )
+                            ),
+                        };
+                        &mut part^.collision_mesh |> collisions.Mesh.add_face(face);
+                    );
+                );
+
+                const walk_mesh = (mesh :: &gltf.Mesh) => (
+                    for primitive in &mesh^.primitives |> ArrayList.iter do (
+                        walk_primitive(primitive);
+                    );
+                );
+
+                const walk_node = (node :: &gltf.Node) => (
+                    with Ctx = {
+                        ...(@current Ctx),
+                        .matrix = Mat4.mul_mat((@current Ctx).matrix, node^.local_transform),
+                    };
+                    if node^.mesh is :Some ref mesh then (
+                        walk_mesh(&mesh^^);
+                    );
+                    for child in &node^.children |> ArrayList.iter do (
+                        walk_node(&child^^);
+                    );
+                );
+
+                const walk_scene = (scene :: &gltf.Scene) => (
+                    for node in &scene^.nodes |> ArrayList.iter do (
+                        walk_node(&node^^);
+                    );
+                );
             );
-            let sfx = geng.audio.Buffer.load(
-                &format!("\(path)/sfx.wav") |> as_str
+            let mut part_by_material = OrdMap.new();
+            let mut loaded_materials = OrdMap.new();
+            with Impl.Ctx = {
+                .materials_config = &materials_config,
+                .part_by_material = &mut part_by_material,
+                .loaded_materials = &mut loaded_materials,
+                .matrix = gltf_to_geng_matrix(),
+            };
+            Impl.walk_scene(&gltf_asset.scene^);
+            let mut parts = ArrayList.new();
+            for { .key = _, .value = part } in part_by_material |> OrdMap.into_iter do (
+                &mut parts |> ArrayList.push_back(part);
             );
             {
-                .collision_mesh,
-                .model,
-                .sfx,
-                .properties,
-                .particle,
+                .gltf = gltf_asset,
+                .parts,
             }
         );
     );
 
     const Models = newtype {
         .skins :: ArrayList.t[Model.t],
-        .level :: ArrayList.t[LevelModel],
-        .level_nocollisions :: ArrayList.t[Model.t],
         .jetpack :: Model.t,
         .badarms :: Model.t,
         .dragon_scale :: Model.t,
@@ -141,7 +234,7 @@ const Assets = (
 
     const load = () -> t => (
         let config = load_config();
-        let level = gltf.Asset.load("assets/level.glb");
+        let level = Level.load();
         let music = geng.audio.Buffer.load("assets/music.wav");
         let music = geng.audio.play_with(
             &music,
@@ -234,48 +327,6 @@ const Assets = (
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/trumpet"));
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/gondo"));
                 &mut list |> ArrayList.push_back(Model.load("assets/models/player/debug"));
-                list
-            ),
-            .level = (
-                let mut list = ArrayList.new();
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/grass"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/lava"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/logs"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rock"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/sand"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/ice"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/metal"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/trampoline"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/mushroom"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rocket"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/net"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/brick"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/paint"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/road"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/wood_01"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/wood_02"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rock_02"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/rock_03"));
-                &mut list |> ArrayList.push_back(LevelModel.load("assets/models/level/sail"));
-                list
-            ),
-            .level_nocollisions = (
-                let mut list = ArrayList.new();
-                &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/leaves"
-                ));
-                &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/outline"
-                ));
-                &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/flag"
-                ));
-                &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/secret"
-                ));
-                &mut list |> ArrayList.push_back(Model.load(
-                    "assets/models/level/nocollisions/playground"
-                ));
                 list
             ),
             .jetpack = Model.load("assets/models/jetpack"),

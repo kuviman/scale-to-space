@@ -24,7 +24,7 @@ const types = (
     };
 
     const MeshPrimitive = newtype {
-        .attributes :: json.Map,
+        .attributes :: json.Map[Int32],
         .indices :: Option.t[Index],
         .material :: Option.t[Index],
         .mode :: Option.t[GLenum],

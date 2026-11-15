@@ -84,35 +84,34 @@ const chunk_box = (from :: ChunkCoord, to :: ChunkCoord) -> std.iter.Iterable[Ch
 impl Mesh as module = (
     module:
 
-    const new = (faces :: ArrayList.t[Face]) -> Mesh => (
-        let mut chunks = OrdMap.new();
-        let mut i = 0;
-        for &face in &faces |> ArrayList.iter do (
-            if i % 1000 == 0 then yield();
-            i += 1;
-            let from = {
-                math.floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                math.floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                math.floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
-            };
-            let to = {
-                math.ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
-                math.ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
-                math.ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
-            };
-            for co in chunk_box(from, to) do (
-                let chunk_center = Vec3.mul({
-                    Int32_to_Float32(co.0) + 0.5,
-                    Int32_to_Float32(co.1) + 0.5,
-                    Int32_to_Float32(co.2) + 0.5,
-                }, CHUNK_SIZE);
-                if distance_to_face(chunk_center, &face).distance |> abs < CHUNK_SIZE then (
-                    let chunk = &mut chunks |> OrdMap.get_or_init(co, Chunk.new);
-                    &mut chunk^.faces |> ArrayList.push_back(face);
-                );
+    const new = () -> Mesh => {
+        .faces = ArrayList.new(),
+        .chunks = OrdMap.new(),
+    };
+
+    const add_face = (self :: &mut Mesh, face :: Face) => (
+        &mut self^.faces |> ArrayList.push_back(face);
+        let from = {
+            math.floor(min(min(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+            math.floor(min(min(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+            math.floor(min(min(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+        };
+        let to = {
+            math.ceil(max(max(face.vs.0.0, face.vs.1.0), face.vs.2.0) / CHUNK_SIZE),
+            math.ceil(max(max(face.vs.0.1, face.vs.1.1), face.vs.2.1) / CHUNK_SIZE),
+            math.ceil(max(max(face.vs.0.2, face.vs.1.2), face.vs.2.2) / CHUNK_SIZE),
+        };
+        for co in chunk_box(from, to) do (
+            let chunk_center = Vec3.mul({
+                Int32_to_Float32(co.0) + 0.5,
+                Int32_to_Float32(co.1) + 0.5,
+                Int32_to_Float32(co.2) + 0.5,
+            }, CHUNK_SIZE);
+            if distance_to_face(chunk_center, &face).distance |> abs < CHUNK_SIZE then (
+                let chunk = &mut self^.chunks |> OrdMap.get_or_init(co, Chunk.new);
+                &mut chunk^.faces |> ArrayList.push_back(face);
             );
         );
-        { .faces, .chunks }
     );
 );
 

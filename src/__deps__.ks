@@ -69,3 +69,8 @@ const binary_search = (
     );
     _in
 );
+
+const gltf_to_geng_matrix = () => (
+    Mat4.rotate_z(Angle.from_degrees(-90))
+        |> Mat4.mul_mat(Mat4.rotate_x(Angle.from_degrees(90)))
+);

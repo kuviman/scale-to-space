@@ -1,6 +1,17 @@
 use (import "../src/__deps__.ks").*;
 use std.rc.Rc;
 
+const component_size = (ty :: gl.GLenum) -> Int32 => with_return (
+    if ty == gl.BYTE then (return 1);
+    if ty == gl.UNSIGNED_BYTE then (return 1);
+    if ty == gl.SHORT then (return 2);
+    if ty == gl.UNSIGNED_SHORT then (return 2);
+    if ty == gl.INT then (return 4);
+    if ty == gl.UNSIGNED_INT then (return 4);
+    if ty == gl.FLOAT then (return 4);
+    panic_fmt!("unsupported component type: \(ty)")
+);
+
 module:
 
 const Document = import "./document.ks";
@@ -33,13 +44,27 @@ impl Renderer as module = (
 );
 
 const BufferView = newtype {
-    .data :: Slice.t[Byte],
+    .data :: ArrayList.t[Byte],
     .target :: gl.GLenum,
     .gl :: gl.Buffer,
     .stride :: Option.t[Int32],
 };
 
+impl BufferView as module = (
+    module:
+
+    const as_slice = [T] (self :: &BufferView) -> Slice.t[T] => (
+        let raw_data = &self^.data |> ArrayList.as_slice;
+        @native ''
+            (\(type (Slice.t[T]))) {
+                .array = \(raw_data).array,
+                .length = \(raw_data).length / sizeof(\(type T)),
+            }''
+    );
+);
+
 const Attribute = newtype {
+    .name :: &str,
     .info :: &ugli.AttributeInfo,
     .buffer :: Rc.t[BufferView],
     .accessor :: &Document.Accessor,
@@ -59,7 +84,98 @@ const MeshPrimitive = newtype {
     .mode :: gl.GLenum,
 };
 
+impl MeshPrimitive as module = (
+    module:
+
+    const Vertex = newtype {
+        .position :: Vec3,
+        .uv :: Vec2,
+        .normal :: Vec3,
+    };
+
+    const Face = newtype {
+        .vertices :: { Vertex, Vertex, Vertex },
+    };
+
+    const faces = (self :: &MeshPrimitive) -> std.iter.Iterable[Face] => {
+        .iter = @move consumer => (
+            if self^.mode != gl.TRIANGLES then (
+                panic("faces only work for TRIANGLES");
+            );
+            let find_attribute = name => with_return (
+                for attribute in &self^.attributes |> ArrayList.iter do (
+                    if attribute^.name == name then (
+                        return attribute;
+                    );
+                );
+                panic_fmt!("\(name) attribute not found")
+            );
+            let positions :: Slice.t[Vec3] = &find_attribute("a_pos")^.buffer^
+                |> BufferView.as_slice;
+            let uvs :: Slice.t[Vec2] = &find_attribute("a_uv")^.buffer^
+                |> BufferView.as_slice;
+            let normals :: Slice.t[Vec3] = &find_attribute("a_normal")^.buffer^
+                |> BufferView.as_slice;
+            let vertex = i -> Vertex => {
+                .position = (positions |> Slice.at(i))^,
+                .uv = (uvs |> Slice.at(i))^,
+                .normal = (normals |> Slice.at(i))^,
+            };
+            let face = (i0, i1, i2) => (
+                let face :: Face = {
+                    .vertices = {
+                        vertex(i0),
+                        vertex(i1),
+                        vertex(i2),
+                    },
+                };
+                consumer(face);
+            );
+            match self^.indices with (
+                | :None => (
+                    let mut i = 0;
+                    while i < positions.length do (
+                        face(i, i + 1, i + 2);
+                        i += 3;
+                    );
+                )
+                | :Some ref indices => (
+                    let index_size = component_size(indices^.accessor^.componentType);
+                    let indices_data :: Slice.t[Byte] = &indices^.buffer^.data |> ArrayList.as_slice;
+                    let idx_at = with_return (
+                        if index_size == 1 then (
+                            return (offset => (
+                                @native ''
+                                    *(uint8_t*)((char*)\(indices_data).array + \(offset))''
+                            ));
+                        );
+                        if index_size == 2 then (
+                            return (offset => (
+                                @native ''
+                                    *(uint16_t*)((char*)\(indices_data).array + \(offset))''
+                            ));
+                        );
+                        if index_size == 4 then (
+                            return (offset => (
+                                @native ''
+                                    *(uint32_t*)((char*)\(indices_data).array + \(offset))''
+                            ));
+                        );
+                        panic_fmt!("index size is \(index_size)")
+                    );
+                    let mut i = 0;
+                    while i < indices_data.length do (
+                        face(idx_at(i), idx_at(i + index_size), idx_at(i + 2 * index_size));
+                        i += 3 * index_size;
+                    );
+                )
+            )
+        ),
+    };
+);
+
 const Material = newtype {
+    .name :: Option.t[String],
     .base_color_factor :: Vec4,
     .texture :: Rc.t[ugli.Texture],
 };
@@ -242,7 +358,6 @@ const Load = (
         .meshes :: OrdMap.t[Index, Rc.t[Mesh]],
         .materials :: OrdMap.t[Index, Rc.t[Material]],
         .textures :: OrdMap.t[Index, Rc.t[ugli.Texture]],
-        .gl_buffers :: OrdMap.t[Index, Rc.t[BufferView]],
     };
 
     const material = (index :: Index) -> Rc.t[Material] => with_return (
@@ -251,12 +366,15 @@ const Load = (
             return material;
         );
         let json_material = &ctx^.document^.json.materials.[index];
+        let name = &json_material^.name |> Option.as_ref |> Option.map(String.clone);
         let material = Rc.new(match json_material^.pbrMetallicRoughness with (
             | :None => {
+                .name,
                 .texture = (@current Renderer.Ctx)^.white_texture,
                 .base_color_factor = { 1, 1, 1, 1 },
             }
             | :Some ref pbr => {
+                .name,
                 .base_color_factor = match pbr^.baseColorFactor with (
                     | :None => { 1, 1, 1, 1 }
                     | :Some a => (
@@ -437,23 +555,28 @@ const Load = (
         Slice.subslice(buffer_data, offset, buffer_view^.byteLength)
     );
 
-    const buffer_view = (index :: Index) -> Option.t[Rc.t[BufferView]] => with_return (
-        let ref mut ctx = @current Context;
-        if &ctx^.gl_buffers |> OrdMap.get(&index) is :Some &buffer then (
-            return :Some buffer;
-        );
+    const buffer_view = (
+        index :: Index,
+        postprocess :: Slice.mutable[Byte] -> (),
+    ) -> Rc.t[BufferView] => (
+        let ref ctx = @current Context;
         let json_buffer_view = &ctx^.document^.json.bufferViews.[index];
         let target = match json_buffer_view^.target with (
             | :Some target => target
-            | :None => return :None
+            | :None => panic("buffer view target unspecified")
         );
         let buffer = gl.create_buffer();
         gl.bind_buffer(target, buffer);
-        let data = buffer_view_as_slice(json_buffer_view);
+        let original_data = buffer_view_as_slice(json_buffer_view);
+        let mut data = ArrayList.with_capacity(Int32_to_UInt32(original_data.length));
+        @native "memcpy(\(&mut data)->buf, \(original_data.array), \(original_data.length))";
+        @native "\(&mut data)->length = \(original_data.length)";
+        postprocess(&mut data |> ArrayList.as_slice_mut);
+
         gl.buffer_data(
             target,
-            data.length,
-            @native "\(data.array)",
+            &data |> ArrayList.length,
+            @native "\(&data)->buf",
             gl.STATIC_DRAW,
         );
         let buffer = Rc.new({
@@ -462,8 +585,7 @@ const Load = (
             .stride = json_buffer_view^.byteStride,
             .gl = buffer,
         });
-        &mut ctx^.gl_buffers |> OrdMap.add(index, buffer);
-        :Some buffer
+        buffer
     );
 
     const mesh = (index :: Document.Index) -> Rc.t[Mesh] => with_return (
@@ -491,10 +613,16 @@ const Load = (
                     name = "a_uv";
                 );
                 let accessor = &ctx^.document^.json.accessors.[accessor_index];
-                let buffer = match Load.buffer_view(accessor^.bufferView) with (
-                    | :None => continue
-                    | :Some buffer => buffer
-                );
+                let buffer = Load.buffer_view(accessor^.bufferView, raw_data => (
+                    if name == "a_uv" then (
+                        let data :: Slice.mutable[Vec2] = @native "#uninitialized";
+                        @native "\(data).array = \(raw_data).array";
+                        @native "\(data).length = \(raw_data).length / (sizeof(Float32) * 2)";
+                        for v in data |> Slice.iter_mut do (
+                            v^.1 = 1 - v^.1;
+                        );
+                    );
+                ));
                 let attribute_info = match (
                     &(@current Renderer.Ctx)^.program.attributes
                         |> OrdMap.get(&String.from_str(name))
@@ -514,16 +642,13 @@ const Load = (
                 ) else (
                     panic("unsupported attribute type???")
                 );
-                let component_size = if accessor^.componentType == gl.FLOAT then (
-                    4
-                ) else (
-                    panic("unsupported component type????")
-                );
+                let component_size = component_size(accessor^.componentType);
                 let stride = match buffer^.stride with (
                     | :Some stride => stride
                     | :None => component_count * component_size
                 );
                 let attribute = {
+                    .name,
                     .info = attribute_info,
                     .buffer,
                     .component_count,
@@ -534,10 +659,7 @@ const Load = (
             );
             let indices = json_primitive^.indices |> Option.map(accessor_index => (
                 let accessor = &ctx^.document^.json.accessors.[accessor_index];
-                let buffer = match Load.buffer_view(accessor^.bufferView) with (
-                    | :None => continue
-                    | :Some buffer => buffer
-                );
+                let buffer = Load.buffer_view(accessor^.bufferView, _ => ());
                 let ty = &accessor^.@"type" |> as_str;
                 if ty != "SCALAR" then panic("indices are not SCALAR???");
                 {
@@ -579,7 +701,6 @@ impl Asset as module = (
             .scenes = OrdMap.new(),
             .textures = OrdMap.new(),
             .materials = OrdMap.new(),
-            .gl_buffers = OrdMap.new(),
         };
         for { index, json_node } in (
             &document.json.nodes
