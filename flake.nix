@@ -42,6 +42,7 @@
               "deps"
               "src"
               "net"
+              "gltf"
             ];
           };
           nativeBuildInputs = [ geng ];
