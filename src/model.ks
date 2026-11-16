@@ -1,5 +1,6 @@
 use (import "./__deps__.ks").*;
 const collisions = import "./collisions.ks";
+const gltf = import "../gltf/_lib.ks";
 
 module:
 
@@ -54,14 +55,22 @@ const Model = (
     );
 
     const draw = (model :: &Model.t, animated :: Bool, matrix :: Mat4) => (
-        let renderer = @current Renderer.Ctx;
+        let ctx = @current gltf.Renderer.Ctx;
         let ref camera = @current geng.CameraUniforms.Ctx;
 
-        let program = &renderer^.program;
+        let program = &ctx.renderer^.program;
         program |> ugli.Program.@"use";
 
         let mut draw_state = ugli.DrawState.init();
         let draw_state = &mut draw_state;
+        if ctx.depth is :Some texture then (
+            program
+                |> ugli.set_uniform(
+                    "u_depth_texture",
+                    texture,
+                    draw_state
+                );
+        );
         program
             |> ugli.set_uniform(
                 "u_time",
@@ -94,8 +103,14 @@ const Model = (
             );
         program
             |> ugli.set_uniform(
-                "u_texture",
+                "u_base_color_texture",
                 &model^.texture,
+                draw_state
+            );
+        program
+            |> ugli.set_uniform(
+                "u_framebuffer_size",
+                (@current ugli.Context).framebuffer.size |> Vec2i.into_vec2,
                 draw_state
             );
         let collisions = (@current PlayerCtx).collisions;

@@ -1,3 +1,24 @@
+const float PACK_UPSCALE = 256.0 / 255.0; // fraction -> 0..1 (including 1)
+const float UNPACK_DOWNSCALE = 255.0 / 256.0; // 0..1 -> fraction (excluding 1)
+
+const vec3 PACK_FACTORS = vec3(256.0 * 256.0 * 256.0, 256.0 * 256.0, 256.0);
+const vec4 UNPACK_FACTORS = UNPACK_DOWNSCALE / vec4(PACK_FACTORS, 1.0);
+
+const float SHIFT_RIGHT_8 = 1.0 / 256.0;
+
+float unpack4(vec4 v) {
+    return v.x;
+    return dot(v, UNPACK_FACTORS);
+}
+
+vec4 pack4(float value) {
+    float v = clamp(value, 0.0, 1.0);
+    vec4 r = vec4(fract(v * PACK_FACTORS), v);
+    r.yzw -= r.xyz * SHIFT_RIGHT_8;
+    return r * PACK_UPSCALE;
+}
+// ----
+
 varying vec2 v_uv;
 varying vec3 v_normal;
 varying vec3 v_camera_normal;
@@ -6,6 +27,9 @@ varying vec3 v_camera_pos;
 
 uniform vec4 u_base_color_factor;
 uniform sampler2D u_base_color_texture;
+
+uniform sampler2D u_depth_texture;
+uniform vec2 u_framebuffer_size;
 
 uniform vec3 u_player_pos;
 uniform float u_player_radius;
@@ -17,7 +41,31 @@ vec4 lerp(vec4 a, vec4 b, float t) {
     return a * (1.0 - t) + b * t;
 }
 
+float depth_at(vec2 screen_pos) {
+    return unpack4(texture2D(u_depth_texture, screen_pos / u_framebuffer_size)) * 256.0;
+}
+
+#define OUTLINE_DEPTH_DIFF 1.5
+
 void main() {
+    vec2 screen_pos = gl_FragCoord.xy;
+    float depth = depth_at(screen_pos);
+    if (abs(depth_at(screen_pos + vec2(5.0, 0.0)) - depth) > OUTLINE_DEPTH_DIFF) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    };
+    if (abs(depth_at(screen_pos + vec2(-5.0, 0.0)) - depth) > OUTLINE_DEPTH_DIFF) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    };
+    if (abs(depth_at(screen_pos + vec2(0.0, -5.0)) - depth) > OUTLINE_DEPTH_DIFF) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    };
+    if (abs(depth_at(screen_pos + vec2(0.0, 5.0)) - depth) > OUTLINE_DEPTH_DIFF) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    };
     vec3 light_dir = normalize(vec3(2.0, 6.0, 7.0));
     float light_k = max(dot(light_dir, normalize(v_normal)), 0.0);
     float ambient_light = 0.8;

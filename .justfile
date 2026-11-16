@@ -53,8 +53,8 @@ client:
         ./target/compiled/main.exe --connect 127.0.0.1:1235
 
 serve:
-    just build-c
-    just build-emscripten
+    geng transpile-to-c
+    geng build-emscripten
     caddy run
 
 publish-dev:

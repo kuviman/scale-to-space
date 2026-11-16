@@ -478,6 +478,7 @@ use (
         .camera :: geng.Camera,
         .assets :: Assets.t,
         .gltf_renderer :: gltf.Renderer,
+        .gltf_depth_renderer :: gltf.Renderer,
         .model_renderer :: Model.Renderer,
         .water :: Model.t,
         .player :: Entity,
@@ -922,9 +923,13 @@ use (
             .init = () => (
                 SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);
                 let gltf_renderer = gltf.Renderer.init();
-                with gltf.Renderer.Ctx = &gltf_renderer;
-                @native "glEnable(GL_BLEND)";
-                @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
+                with gltf.Renderer.Ctx = {
+                    .renderer = &gltf_renderer,
+                    .depth = :None,
+                };
+                let gltf_depth_renderer = gltf.Renderer.init_with("assets/shaders/depth");
+                # @native "glEnable(GL_BLEND)";
+                # @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
                 @native "glCullFace(GL_BACK)";
                 let mut assets = Assets.load();
                 with Assets.Ctx = &mut assets;
@@ -966,6 +971,7 @@ use (
                     .dead_timer = 0,
                     .water,
                     .gltf_renderer,
+                    .gltf_depth_renderer,
                     .model_renderer = Model.Renderer.init(),
                     .player = reset_player(
                         .skin = 0,
@@ -1035,7 +1041,6 @@ use (
             .draw = self => with_return (
                 self^.camera.position = Vec3.add(self^.player.position, { 0, 0, 3 });
                 with Assets.Ctx = &mut self^.assets;
-                with gltf.Renderer.Ctx = &self^.gltf_renderer;
                 with Model.Renderer.Ctx = &self^.model_renderer;
                 let no_collisions = ArrayList.new();
                 with Model.PlayerCtx = {
@@ -1047,43 +1052,90 @@ use (
                 };
                 with geng.CameraUniforms.Ctx = geng.CameraUniforms.init(
                     self^.camera,
-                    .framebuffer_size = geng.get_window_size(),
+                    .framebuffer_size = geng.get_window_size() |> Vec2i.into_vec2,
                 );
                 ugli.clear({ 0.8, 0.8, 1, 1 });
-                (
-                    let matrix = gltf_to_geng_matrix();
-                    for node in &self^.assets.level.gltf.scene^.nodes |> ArrayList.iter do (
-                        &node^^ |> gltf.Node.draw(false, matrix);
-                    );
-                );
                 let mut collected_scales :: Int32 = 0;
                 for scale in &self^.dragon_scales |> ArrayList.iter do (
                     if scale^.collected then (
                         collected_scales += 1;
                         continue;
                     );
-                    let matrix = Mat4.translate(scale^.position)
-                        |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(geng.time_since_start() * 90)));
-                    Model.draw(&self^.assets.models.dragon_scale, false, matrix);
                 );
-                if not self^.dead then (
-                    &mut self^.player.collisions |> ArrayList.sort_with(
-                        (a, b) => std.cmp.default_compare(&b^.penetration, &a^.penetration)
+                let render_world = () => (
+                    (
+                        let matrix = gltf_to_geng_matrix();
+                        for node in &self^.assets.level.gltf.scene^.nodes |> ArrayList.iter do (
+                            &node^^ |> gltf.Node.draw(false, matrix);
+                        );
                     );
-                    with Model.PlayerCtx = {
-                        .collisions = &self^.player.collisions,
-                        .position = self^.player.position,
-                        .radius = 0,
-                        .volleyball_position = self^.beachball.current.position,
-                        .volleyball_radius = self^.beachball.current.shell.radius,
+                    for scale in &self^.dragon_scales |> ArrayList.iter do (
+                        let matrix = Mat4.translate(scale^.position)
+                            |> Mat4.mul_mat(Mat4.rotate_z(Angle.from_degrees(geng.time_since_start() * 90)));
+                        Model.draw(&self^.assets.models.dragon_scale, false, matrix);
+                    );
+                    if not self^.dead then (
+                        &mut self^.player.collisions |> ArrayList.sort_with(
+                            (a, b) => std.cmp.default_compare(&b^.penetration, &a^.penetration)
+                        );
+                        with Model.PlayerCtx = {
+                            .collisions = &self^.player.collisions,
+                            .position = self^.player.position,
+                            .radius = 0,
+                            .volleyball_position = self^.beachball.current.position,
+                            .volleyball_radius = self^.beachball.current.shell.radius,
+                        };
+                        Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
+                    );
+                    for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
+                        OtherPlayer.draw(other_player);
+                    );
+                    Entity.draw(&self^.beachball.current, .jetpack = false);
+                    # Model.draw(&self^.water, true, Mat4.IDENTITY);
+                );
+                let mut depth_texture = ugli.Texture.new_uninitialized((
+                    let { width, height } = geng.get_window_size();
+                    # { width / 10, height / 10 }
+                    { width, height }
+                ), :Nearest);
+                @defer ugli.Texture.drop(depth_texture);
+                (
+                    let mut depth_renderbuffer = ugli.Renderbuffer.new(depth_texture.size, gl.DEPTH_COMPONENT16);
+                    @defer ugli.Renderbuffer.drop(depth_renderbuffer);
+                    let mut framebuffer = ugli.Framebuffer.new(
+                        .color = :Texture &mut depth_texture,
+                        .depth = :Renderbuffer &mut depth_renderbuffer,
+                    );
+                    @defer ugli.Framebuffer.drop(framebuffer);
+                    ugli.Framebuffer.render_into(&mut framebuffer, () => (
+                        ugli.clear({ 0, 0, 0, 0 });
+                        with gltf.Renderer.Ctx = {
+                            .renderer = &self^.gltf_depth_renderer,
+                            .depth = :None,
+                        };
+                        @native "glDisable(GL_BLEND)";
+                        render_world();
+                    ));
+                    with geng.CameraUniforms.Ctx = {
+                        .view_matrix = Mat4.IDENTITY,
+                        .projection_matrix = Mat4.IDENTITY,
                     };
-                    Entity.draw(&self^.player, .jetpack = self^.jetpack_enabled);
+                    if false then (
+                        @native "glDisable(GL_BLEND)";
+                        geng.draw_quad(
+                            .pos = { 0, 0 },
+                            .half_size = { 1, 1 },
+                            .texture = &depth_texture,
+                        );
+                        @native "glEnable(GL_BLEND)";
+                    );
                 );
-                for &{ .key = _, .value = ref other_player } in &self^.other_players |> OrdMap.iter do (
-                    OtherPlayer.draw(other_player);
-                );
-                Entity.draw(&self^.beachball.current, .jetpack = false);
-                # Model.draw(&self^.water, true, Mat4.IDENTITY);
+                with gltf.Renderer.Ctx = {
+                    .renderer = &self^.gltf_renderer,
+                    .depth = :Some &depth_texture,
+                };
+                render_world();
+
                 for p in &self^.particles |> ArrayList.iter do (
                     draw_particle(self, p^.position, 1 - math.pow(p^.t, 2), p^.texture);
                 );
@@ -1325,7 +1377,7 @@ use (
                         .fov = :Vertical Angle.from_degrees(90),
                         .distance = 10,
                     },
-                    .framebuffer_size = geng.get_window_size(),
+                    .framebuffer_size = geng.get_window_size() |> Vec2i.into_vec2,
                 );
                 if not self^.connected then (
                     geng.Font.draw(

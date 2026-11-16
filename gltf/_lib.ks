@@ -33,11 +33,16 @@ const Renderer = newtype {
 impl Renderer as module = (
     module:
 
-    const Ctx = @context type (&Renderer);
+    const Ctx = @context type {
+        .renderer :: &Renderer,
+        .depth :: Option.t[type (&ugli.Texture)],
+    };
 
-    const init = () -> Renderer => (
+    const init = () -> Renderer => init_with("assets/shaders/gltf");
+
+    const init_with = (path :: &str) -> Renderer => (
         {
-            .program = geng.load_shader("assets/shaders/gltf"),
+            .program = geng.load_shader(path),
             .white_texture = Rc.new(ugli.Texture.load("assets/white.png", :Nearest)),
         }
     );
@@ -65,7 +70,6 @@ impl BufferView as module = (
 
 const Attribute = newtype {
     .name :: &str,
-    .info :: &ugli.AttributeInfo,
     .buffer :: Rc.t[BufferView],
     .accessor :: &Document.Accessor,
     .component_count :: Int32,
@@ -189,13 +193,21 @@ impl Mesh as module = (
     module:
 
     const draw = (self :: &Mesh, animated :: Bool, matrix :: Mat4) => (
-        let renderer = @current Renderer.Ctx;
+        let ctx = @current Renderer.Ctx;
         let ref camera = @current geng.CameraUniforms.Ctx;
 
-        let program = &renderer^.program;
+        let program = &ctx.renderer^.program;
         program |> ugli.Program.@"use";
         let mut draw_state = ugli.DrawState.init();
         let draw_state = &mut draw_state;
+        if ctx.depth is :Some texture then (
+            program
+                |> ugli.set_uniform(
+                    "u_depth_texture",
+                    texture,
+                    draw_state
+                );
+        );
         program
             |> ugli.set_uniform(
                 "u_time",
@@ -206,6 +218,12 @@ impl Mesh as module = (
             |> ugli.set_uniform(
                 "u_animated",
                 if animated then 1 else 0 :: Float32,
+                draw_state
+            );
+        program
+            |> ugli.set_uniform(
+                "u_framebuffer_size",
+                (@current ugli.Context).framebuffer.size |> Vec2i.into_vec2,
                 draw_state
             );
         program
@@ -292,17 +310,24 @@ impl Mesh as module = (
                 );
             let mut count = 0;
             for (attribute :: &Attribute) in &primitive^.attributes |> ArrayList.iter do (
+                let attribute_info = match (
+                    &(@current Renderer.Ctx).renderer^.program.attributes
+                        |> OrdMap.get(&String.from_str(attribute^.name))
+                ) with (
+                    | :None => continue
+                    | :Some info => info
+                );
                 gl.bind_buffer(attribute^.buffer^.target, attribute^.buffer^.gl);
                 count = attribute^.accessor^.count;
                 gl.vertex_attrib_pointer(
-                    attribute^.info^.location,
+                    attribute_info^.location,
                     attribute^.component_count,
                     attribute^.accessor^.componentType,
                     false,
                     attribute^.stride,
                     attribute^.accessor^.byteOffset |> Option.unwrap_or(0),
                 );
-                gl.enable_vertex_attrib_array(attribute^.info^.location);
+                gl.enable_vertex_attrib_array(attribute_info^.location);
             );
             match primitive^.indices with (
                 | :Some ref indices => (
@@ -370,7 +395,7 @@ const Load = (
         let material = Rc.new(match json_material^.pbrMetallicRoughness with (
             | :None => {
                 .name,
-                .texture = (@current Renderer.Ctx)^.white_texture,
+                .texture = (@current Renderer.Ctx).renderer^.white_texture,
                 .base_color_factor = { 1, 1, 1, 1 },
             }
             | :Some ref pbr => {
@@ -384,7 +409,7 @@ const Load = (
                     )
                 ),
                 .texture = match pbr^.baseColorTexture with (
-                    | :None => (@current Renderer.Ctx)^.white_texture
+                    | :None => (@current Renderer.Ctx).renderer^.white_texture
                     | :Some ref texture => (
                         # TODO texture^.texCoord
                         Load.texture(texture^.index)
@@ -623,13 +648,6 @@ const Load = (
                         );
                     );
                 ));
-                let attribute_info = match (
-                    &(@current Renderer.Ctx)^.program.attributes
-                        |> OrdMap.get(&String.from_str(name))
-                ) with (
-                    | :None => continue
-                    | :Some info => info
-                );
                 let ty = &accessor^.@"type" |> as_str;
                 let component_count = if ty == "SCALAR" then (
                     1
@@ -649,7 +667,6 @@ const Load = (
                 );
                 let attribute = {
                     .name,
-                    .info = attribute_info,
                     .buffer,
                     .component_count,
                     .accessor,
