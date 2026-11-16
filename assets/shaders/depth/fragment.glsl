@@ -11,7 +11,6 @@ float unpack4(vec4 v) {
 }
 
 vec4 pack4(float value) {
-    return vec4(value, 0.0, 0.0, 1.0);
     float v = clamp(value, 0.0, 1.0);
     vec4 r = vec4(fract(v * PACK_FACTORS), v);
     r.yzw -= r.xyz * SHIFT_RIGHT_8;
@@ -39,5 +38,6 @@ vec4 lerp(vec4 a, vec4 b, float t) {
 
 #define MAX_DEPTH 256.0
 void main() {
-    gl_FragColor = pack4(-v_camera_pos.z / MAX_DEPTH);
+    // gl_FragColor = pack4(-v_camera_pos.z / MAX_DEPTH);
+    gl_FragColor = pack4(gl_FragCoord.z);
 }

@@ -1108,7 +1108,7 @@ use (
                     );
                     @defer ugli.Framebuffer.drop(framebuffer);
                     ugli.Framebuffer.render_into(&mut framebuffer, () => (
-                        ugli.clear({ 0, 0, 0, 0 });
+                        ugli.clear({ 1, 1, 1, 1 });
                         with gltf.Renderer.Ctx = {
                             .renderer = &self^.gltf_depth_renderer,
                             .depth = :None,

@@ -199,6 +199,7 @@ impl Mesh as module = (
         let program = &ctx.renderer^.program;
         program |> ugli.Program.@"use";
         let mut draw_state = ugli.DrawState.init();
+        @native "glDisable(GL_BLEND)";
         let draw_state = &mut draw_state;
         if ctx.depth is :Some texture then (
             program
