@@ -203,7 +203,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
             )
             | :Int32 => `(
                 match $value with (
-                    | :Number n => match &n |> Number.try_u32 with (
+                    | :Number n => match &n |> Number.try_i32 with (
                         | :Ok n => n
                         | :Error s => error_fmt!("Expected int: \(s)")
                     )
@@ -213,7 +213,7 @@ const parse_value = (value :: std.Ast, T :: Type) -> std.Ast => @cfg (
             | :UInt32 => `(
                 match $value with (
                     | :Number n => match &n |> Number.try_u32 with (
-                        | :Ok n => Int32_to_UInt32(n)
+                        | :Ok n => n
                         | :Error s => error_fmt!("Expected int: \(s)")
                     )
                     | _ => error("Expected a uint32")
