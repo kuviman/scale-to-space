@@ -70,6 +70,7 @@ uniform vec4 u_base_color_factor;
 uniform sampler2D u_base_color_texture;
 
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_normal_texture;
 uniform vec2 u_framebuffer_size;
 
 uniform vec3 u_player_pos;
@@ -78,6 +79,9 @@ uniform float u_player_radius;
 uniform vec3 u_volleyball_pos;
 uniform float u_volleyball_radius;
 
+vec3 lerp(vec3 a, vec3 b, float t) {
+    return a * (1.0 - t) + b * t;
+}
 vec4 lerp(vec4 a, vec4 b, float t) {
     return a * (1.0 - t) + b * t;
 }
@@ -85,16 +89,21 @@ vec4 lerp(vec4 a, vec4 b, float t) {
 uniform mat4 u_projection_matrix;
 mat4 inv_projection_matrix;
 
-#define MAX_DEPTH 256.0
+// (x, y, z, 1) = inv_projection_matrix * (xx, yy, zz, w)
+
+// #define MAX_DEPTH 256.0
 float depth_at(vec2 screen_pos) {
     float d = unpack4(texture2D(u_depth_texture, screen_pos / u_framebuffer_size));
-    // return 1.0 / (d + inv_projection_matrix[2].w + inv_projection_matrix[3].w);
-    // return d * MAX_DEPTH;
-    return d;
+    vec3 v = vec3(screen_pos / u_framebuffer_size, d) * 2.0 - 1.0;
+    vec4 r = inv_projection_matrix * vec4(v, 1.0);
+    return -r.z / r.w;
 }
 
-#define OUTLINE_WIDTH 3.5
-#define OUTLINE_DEPTH_DIFF 0.1
+vec3 normal_at(vec2 screen_pos) {
+    return texture2D(u_normal_texture, screen_pos / u_framebuffer_size).xyz * 2.0 - 1.0;
+}
+
+float sqr(float x) { return x * x; }
 
 void main() {
     inv_projection_matrix = inverse(u_projection_matrix);
@@ -124,23 +133,67 @@ void main() {
     vec4 light_color = vec4(vec3(light_k), 1.0);
     gl_FragColor = texture2D(u_base_color_texture, v_uv) * u_base_color_factor * light_color;
     gl_FragColor = lerp(gl_FragColor, vec4(1.0), hightlight);
-    {
-        // outline
+    if (true) {
+        // normal-based outline
         vec2 screen_pos = gl_FragCoord.xy;
         float depth = depth_at(screen_pos);
-        float max_depth = depth;
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(OUTLINE_WIDTH, 0.0)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(-OUTLINE_WIDTH, 0.0)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(0.0, OUTLINE_WIDTH)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(0.0, -OUTLINE_WIDTH)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(OUTLINE_WIDTH, OUTLINE_WIDTH)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(-OUTLINE_WIDTH, OUTLINE_WIDTH)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(-OUTLINE_WIDTH, OUTLINE_WIDTH)));
-        max_depth = max(max_depth, depth_at(screen_pos + vec2(OUTLINE_WIDTH, -OUTLINE_WIDTH)));
-        float depth_diff = max_depth - depth;
-        float outline = smoothstep(0.05, 0.1, depth_diff * pow(depth, 30) * 100.0);
+        vec3 normal = normal_at(screen_pos);
+        float normal_diff = -1.0;
+        float total_weight = 0.0;
+#define OUTLINE_PIXELS 2
+        for (int i = -OUTLINE_PIXELS; i <= OUTLINE_PIXELS; i++) {
+            for (int j = -OUTLINE_PIXELS; j <= OUTLINE_PIXELS; j++) {
+                total_weight += max(0.0, float(OUTLINE_PIXELS) - length(vec2(float(i), float(j))));
+                vec2 pixel_offset = vec2(float(i), float(j));
+                vec2 pixel = screen_pos + pixel_offset;
+                // if (depth_at(pixel) > depth) {
+                    // normal_diff += length(normal_at(pi0.0xel) - normal);
+                    float depth_diff_here = depth_at(pixel) - depth;
+                    normal_diff = max(normal_diff, length(normal_at(pixel) - normal));
+                // }
+            }
+        }
+#undef OUTLINE_PIXELS
+        // normal_diff /= total_weight;
+        float outline = smoothstep(0.0, 1.0, normal_diff);
+        outline *= 0.05 * smoothstep(-50.0, -10.0, -depth);
+        gl_FragColor.xyz = lerp(gl_FragColor.xyz, vec3(0.0), outline);
+        // gl_FragColor.xyz = vec3(normal_at(screen_pos));
+    }
+    if (true) {
+        // depth-based outline
+        vec2 screen_pos = gl_FragCoord.xy;
+        float depth = depth_at(screen_pos);
+        // float max_depth_diff = 0.0;
+        float total_depth_diff = 0.0;
+        float total_weight = 0.0;
+        float max_diff = 0.05 * pow(depth, 1.0);
+        // a*depth^b
+#define OUTLINE_PIXELS 5
+        for (int i = -OUTLINE_PIXELS; i <= OUTLINE_PIXELS; i++) {
+            for (int j = -OUTLINE_PIXELS; j <= OUTLINE_PIXELS; j++) {
+                if (i == 0 && j == 0) continue;
+                vec2 pixel_offset = vec2(float(i), float(j));
+                vec2 pixel = screen_pos + pixel_offset;
+                float depth_diff = (depth_at(pixel) - depth) / length(pixel_offset) / max_diff;
+                float k = 0.5;
+                depth_diff = clamp(depth_diff / k, -1.0, 1.0) * k;
+                // max_depth_diff = max(max_depth_diff, depth_diff);
+                float weight = 1.0 / length(pixel_offset);
+                total_depth_diff += depth_diff * weight;
+                total_weight += weight;
+            }
+        }
+#undef OUTLINE_PIXELS
+        float avg_depth_diff = total_depth_diff / total_weight;
+        float outline = smoothstep(0.05, 0.1, avg_depth_diff);
+        // float outline = smoothstep(0.2, 0.5, 100.0 * avg_depth_diff / pow(depth, 1.5));
+        // float outline = smoothstep(0.0, 0.01, depth_diff);
         gl_FragColor.xyz *= 1.0 - outline;
+        float x = unpack4(texture2D(u_depth_texture, screen_pos / u_framebuffer_size));
+        // gl_FragColor.xyz = vec3(x);
         // gl_FragColor.xyz = vec3(outline);
+        // gl_FragColor.xyz = vec3(-depth / 100.0);
     }
     if (true) {
         // fog
@@ -150,6 +203,7 @@ void main() {
             1.0 - pow(0.9, -v_camera_pos.z / 50.0)
         );
     }
+    gl_FragColor.a *= 0.5;
     if (gl_FragColor.a < 0.1) {
         discard;
     }

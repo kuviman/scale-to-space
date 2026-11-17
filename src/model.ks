@@ -72,6 +72,14 @@ const Model = (
                     draw_state
                 );
         );
+        if ctx.normal is :Some texture then (
+            program
+                |> ugli.set_uniform(
+                    "u_normal_texture",
+                    texture,
+                    draw_state
+                );
+        );
         program
             |> ugli.set_uniform(
                 "u_time",

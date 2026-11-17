@@ -36,7 +36,7 @@ vec4 lerp(vec4 a, vec4 b, float t) {
     return a * (1.0 - t) + b * t;
 }
 
-#define MAX_DEPTH 256.0
+#define MAX_DEPTH 2000.0
 void main() {
     // gl_FragColor = pack4(-v_camera_pos.z / MAX_DEPTH);
     gl_FragColor = pack4(gl_FragCoord.z);

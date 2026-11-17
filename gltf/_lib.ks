@@ -36,6 +36,7 @@ impl Renderer as module = (
     const Ctx = @context type {
         .renderer :: &Renderer,
         .depth :: Option.t[type (&ugli.Texture)],
+        .normal :: Option.t[type (&ugli.Texture)],
     };
 
     const init = () -> Renderer => init_with("assets/shaders/gltf");
@@ -205,6 +206,14 @@ impl Mesh as module = (
             program
                 |> ugli.set_uniform(
                     "u_depth_texture",
+                    texture,
+                    draw_state
+                );
+        );
+        if ctx.normal is :Some texture then (
+            program
+                |> ugli.set_uniform(
+                    "u_normal_texture",
                     texture,
                     draw_state
                 );

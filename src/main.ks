@@ -471,14 +471,25 @@ use (
         .scoring :: BeachballScoringState,
     };
 
+    const GltfRenderers = newtype {
+        .regular :: gltf.Renderer,
+        .depth :: gltf.Renderer,
+        .normal :: gltf.Renderer,
+    };
+
+    const load_gltf_renderers = () -> GltfRenderers => {
+        .regular = gltf.Renderer.init(),
+        .depth = gltf.Renderer.init_with("assets/shaders/depth"),
+        .normal = gltf.Renderer.init_with("assets/shaders/normal"),
+    };
+
     const Game = newtype {
         .server_meta :: badcop.ServerMeta,
         .send_beachball_update :: Bool,
         .fps_counter :: FpsCounter,
         .camera :: geng.Camera,
         .assets :: Assets.t,
-        .gltf_renderer :: gltf.Renderer,
-        .gltf_depth_renderer :: gltf.Renderer,
+        .gltf_renderers :: GltfRenderers,
         .model_renderer :: Model.Renderer,
         .water :: Model.t,
         .player :: Entity,
@@ -922,14 +933,15 @@ use (
         impl Game as geng.App = {
             .init = () => (
                 SDL.SetWindowRelativeMouseMode((@current geng.Context).window, true);
-                let gltf_renderer = gltf.Renderer.init();
+                let gltf_renderers = load_gltf_renderers();
                 with gltf.Renderer.Ctx = {
-                    .renderer = &gltf_renderer,
+                    .renderer = &gltf_renderers.regular,
                     .depth = :None,
+                    .normal = :None,
                 };
-                let gltf_depth_renderer = gltf.Renderer.init_with("assets/shaders/depth");
                 # @native "glEnable(GL_BLEND)";
                 # @native "glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)";
+                @native "glEnable(GL_CULL_FACE)";
                 @native "glCullFace(GL_BACK)";
                 let mut assets = Assets.load();
                 with Assets.Ctx = &mut assets;
@@ -970,8 +982,7 @@ use (
                     .dead = false,
                     .dead_timer = 0,
                     .water,
-                    .gltf_renderer,
-                    .gltf_depth_renderer,
+                    .gltf_renderers,
                     .model_renderer = Model.Renderer.init(),
                     .player = reset_player(
                         .skin = 0,
@@ -1110,8 +1121,9 @@ use (
                     ugli.Framebuffer.render_into(&mut framebuffer, () => (
                         ugli.clear({ 1, 1, 1, 1 });
                         with gltf.Renderer.Ctx = {
-                            .renderer = &self^.gltf_depth_renderer,
+                            .renderer = &self^.gltf_renderers.depth,
                             .depth = :None,
+                            .normal = :None,
                         };
                         @native "glDisable(GL_BLEND)";
                         render_world();
@@ -1130,9 +1142,48 @@ use (
                         @native "glEnable(GL_BLEND)";
                     );
                 );
+                let mut normal_texture = ugli.Texture.new_uninitialized((
+                    let { width, height } = geng.get_window_size();
+                    # { width / 10, height / 10 }
+                    { width, height }
+                ), :Nearest);
+                @defer ugli.Texture.drop(normal_texture);
+                (
+                    let mut depth_renderbuffer = ugli.Renderbuffer.new(normal_texture.size, gl.DEPTH_COMPONENT16);
+                    @defer ugli.Renderbuffer.drop(depth_renderbuffer);
+                    let mut framebuffer = ugli.Framebuffer.new(
+                        .color = :Texture &mut normal_texture,
+                        .depth = :Renderbuffer &mut depth_renderbuffer,
+                    );
+                    @defer ugli.Framebuffer.drop(framebuffer);
+                    ugli.Framebuffer.render_into(&mut framebuffer, () => (
+                        ugli.clear({ 1, 1, 1, 1 });
+                        with gltf.Renderer.Ctx = {
+                            .renderer = &self^.gltf_renderers.normal,
+                            .depth = :None,
+                            .normal = :None,
+                        };
+                        @native "glDisable(GL_BLEND)";
+                        render_world();
+                    ));
+                    with geng.CameraUniforms.Ctx = {
+                        .view_matrix = Mat4.IDENTITY,
+                        .projection_matrix = Mat4.IDENTITY,
+                    };
+                    if false then (
+                        @native "glDisable(GL_BLEND)";
+                        geng.draw_quad(
+                            .pos = { 0, 0 },
+                            .half_size = { 1, 1 },
+                            .texture = &normal_texture,
+                        );
+                        @native "glEnable(GL_BLEND)";
+                    );
+                );
                 with gltf.Renderer.Ctx = {
-                    .renderer = &self^.gltf_renderer,
+                    .renderer = &self^.gltf_renderers.regular,
                     .depth = :Some &depth_texture,
+                    .normal = :Some &normal_texture,
                 };
                 render_world();
 
@@ -1850,6 +1901,7 @@ use (
                     )
                     | :KeyPress :L => (
                         Assets.reload();
+                        self^.gltf_renderers = load_gltf_renderers();
                     )
                     | :KeyPress :P => (
                         self^.power_index = (self^.power_index + 1) % 3;
