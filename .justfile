@@ -25,12 +25,13 @@ build-win:
 run-win *args:
     just build-win && cd result/bin && wine ScaleToSpace.exe {{args}}
 
-build source="src/main.ks":
+[arg("release", long, value="-O 3")]
+build source="src/main.ks" release="":
     geng transpile-to-c {{source}}
-    geng build-tcc
+    {{ if release == "" { "CC=tcc" } else { "" } }} geng compile-exe {{release}}
 
 run *args:
-    geng run-podman --connect 15.204.212.176:5555 {{args}}
+    geng exec ./target/compiled/main.exe --connect 15.204.212.176:5555 {{args}}
 
 run-and-profile:
     geng exec perf record -g ./target/compiled/main.exe --connect 15.204.212.176:5555
